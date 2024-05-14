@@ -1,0 +1,5 @@
+rm *.ascii
+rm *.vtu 
+rm popo
+rm opla
+
