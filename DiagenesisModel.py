@@ -4,7 +4,6 @@
 ###  L'Heureux Diagenesis modelling ###
 
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
 from numba import jit, float64
 from numba.experimental import jitclass
@@ -29,7 +28,7 @@ def heaviside(x,xbot,xtop,xscale):
 
 ###############################################################################
 
-# for the jit-compiler, we need to specify the type of all parameters in the class
+# for the jit-compiling, we need to specify the type of all parameters in the class
 spec = [
     ('g', float64),
     ('K_C', float64),
