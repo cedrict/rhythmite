@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
 from numba import jit
 
+from saveOutput import export_to_ascii, export_to_vtu, export_to_vtu2
+
 ## model for testing different solvers on the L'Heureux (2018) equations 
 
 ###############################################################################
@@ -22,172 +24,15 @@ def heaviside(x,xbot,xtop,xscale):
     val=0.5*(1+np.tanh((x-xtop/xscale)*500)) *0.5*(1+np.tanh((xbot/xscale-x)*500))
     return val
 
-###############################################################################
-def export_to_vtu2(nstep,coords,soln,vel_U,vel_W,xbot,xtop,xscale,dt):
-    # AR, CA, ca, co, phi, u ,W
-
-    m=4
-    nnx=nstep
-    nny=len(coords)
-    nelx=nnx-1
-    nely=nny-1
-    N=nnx*nny
-    nel=nelx*nely
-    Ly=max(coords)
-    Lx=Ly*2
-
-    x = np.empty(N,dtype=np.float64)
-    y = np.empty(N,dtype=np.float64)
-    counter = 0
-    for j in range(0, nny):
-        for i in range(0, nnx):
-            x[counter]=i*Lx/float(nelx)
-            y[counter]=j*Ly/float(nely)
-            counter += 1
-    icon =np.zeros((m, nel),dtype=np.int32)
-    counter = 0
-    for j in range(0, nely):
-        for i in range(0, nelx):
-            icon[0, counter] = i + j * (nelx + 1)
-            icon[1, counter] = i + 1 + j * (nelx + 1)
-            icon[2, counter] = i + 1 + (j + 1) * (nelx + 1)
-            icon[3, counter] = i + (j + 1) * (nelx + 1)
-            counter += 1
-
-    filename = 'solution.vtu'
-    vtufile=open(filename,"w")
-    vtufile.write("<VTKFile type='UnstructuredGrid' version='0.1' byte_order='BigEndian'> \n")
-    vtufile.write("<UnstructuredGrid> \n")
-    vtufile.write("<Piece NumberOfPoints=' %5d ' NumberOfCells=' %5d '>\n" %(N,nel))
-    #####
-    vtufile.write("<Points> \n")
-    vtufile.write("<DataArray type='Float32' NumberOfComponents='3' Format='ascii'> \n")
-    for i in range(0,N):
-        vtufile.write("%10f %10f %10f \n" %(x[i],y[i],0.))
-    vtufile.write("</DataArray>\n")
-    vtufile.write("</Points> \n")
-    #####
-
-    vtufile.write("<PointData Scalars='scalars'>\n")
-    #--
-    vtufile.write("<DataArray type='Float32' Name='AR' Format='ascii'> \n")
-    counter = 0
-    for j in range(0, nny):
-        for i in range(0, nnx):
-            vtufile.write("%10f \n" % soln[nny-1-j,i])
-            counter += 1
-    vtufile.write("</DataArray>\n")
-    #--
-    vtufile.write("<DataArray type='Float32' Name='CA' Format='ascii'> \n")
-    counter = 0
-    for j in range(0, nny):
-        for i in range(0, nnx):
-            vtufile.write("%10f \n" % soln[nny+nny-1-j,i])
-            counter += 1
-    vtufile.write("</DataArray>\n")
-    #--
-    vtufile.write("<DataArray type='Float32' Name='c_ca' Format='ascii'>\n")
-    counter = 0
-    for j in range(0, nny):
-        for i in range(0, nnx):
-            vtufile.write("%10f \n" % soln[2*nny+nny-1-j,i])
-            counter += 1
-    vtufile.write("</DataArray>\n")
-    #--
-    vtufile.write("<DataArray type='Float32' Name='c_co' Format='ascii'>\n")
-    counter = 0
-    for j in range(0, nny):
-        for i in range(0, nnx):
-            vtufile.write("%10f \n" % soln[3*nny+nny-1-j,i])
-            counter += 1
-    vtufile.write("</DataArray>\n")
-    #--
-    vtufile.write("<DataArray type='Float32' Name='phi' Format='ascii'> \n")
-    counter = 0
-    for j in range(0, nny):
-        for i in range(0, nnx):
-            vtufile.write("%10f \n" % soln[4*nny+nny-1-j,i])
-            counter += 1
-    vtufile.write("</DataArray>\n")
-    #--
-    vtufile.write("<DataArray type='Float32' Name='u' Format='ascii'> \n")
-    counter = 0
-    for j in range(0, nny):
-        for i in range(0, nnx):
-            vtufile.write("%8f \n" %vel_U[nny-1-j,i])
-            counter += 1
-    vtufile.write("</DataArray>\n")
-
-    #--
-    vtufile.write("<DataArray type='Float32' Name='CFL nb (u)' Format='ascii'> \n")
-    counter = 0
-    for j in range(0, nny):
-        for i in range(0, nnx):
-            vtufile.write("%8f \n" % (dt*vel_U[nny-1-j,i]/h))
-            counter += 1
-    vtufile.write("</DataArray>\n")
-    #--
-    vtufile.write("<DataArray type='Float32' Name='w' Format='ascii'> \n")
-    counter = 0
-    for j in range(0, nny):
-        for i in range(0, nnx):
-            vtufile.write("%8f \n" %vel_W[nny-1-j,i])
-            counter += 1
-    vtufile.write("</DataArray>\n")
-    #--
-    vtufile.write("<DataArray type='Float32' Name='CFL nb (w)' Format='ascii'> \n")
-    counter = 0
-    for j in range(0, nny):
-        for i in range(0, nnx):
-            vtufile.write("%8f \n" % (dt*vel_W[nny-1-j,i]/h))
-            counter += 1
-    vtufile.write("</DataArray>\n")
-    #--
-    #vtufile.write("<DataArray type='Float32' Name='heaviside' Format='ascii'> \n")
-    #counter = 0
-    #for j in range(0, nny):
-    #    for i in range(0, nnx):
-    #        vtufile.write("%10f \n" % heaviside(Ly-y[counter],xbot,xtop,xscale))
-    #        counter += 1
-    #vtufile.write("</DataArray>\n")
-    #--
-    vtufile.write("</PointData>\n")
-
-    #####
-    vtufile.write("<Cells>\n")
-    #--
-    vtufile.write("<DataArray type='Int32' Name='connectivity' Format='ascii'> \n")
-    for iel in range (0,nel):
-        vtufile.write("%d %d %d %d\n" %(icon[0,iel],icon[1,iel],icon[2,iel],icon[3,iel]))
-    vtufile.write("</DataArray>\n")
-    #--
-    vtufile.write("<DataArray type='Int32' Name='offsets' Format='ascii'> \n")
-    for iel in range (0,nel):
-        vtufile.write("%d \n" %((iel+1)*4))
-    vtufile.write("</DataArray>\n")
-    #--
-    vtufile.write("<DataArray type='Int32' Name='types' Format='ascii'>\n")
-    for iel in range (0,nel):
-        vtufile.write("%d \n" %9)
-    vtufile.write("</DataArray>\n")
-    #--
-    vtufile.write("</Cells>\n")
-    #####
-    vtufile.write("</Piece>\n")
-    vtufile.write("</UnstructuredGrid>\n")
-    vtufile.write("</VTKFile>\n")
-    vtufile.close()
-
-
 
 ###############################################################################
-# use a class to define the model
-# so that we can keep the parameters contained
+# This class contains the functions and parameters that are used to calculate
+# the RHS of eqns 40-43 of L'Heureux (2018)
 
 class LHeureux:
     
     import numpy as np
-    from numba import jit
+    
     
     # define all params as instance vars
     # this way we can easily modify them at the instance level
@@ -195,41 +40,41 @@ class LHeureux:
     def __init__(self):
         
         # physical constants
-        self.g = 9.81*100           # gravitational acceleration
+        self.g = 9.81*100           # gravitational acceleration (cm/s^2)???
         
         # model parameters
-        self.K_C = 10**-6.37        # Calcite solubility
-        self.K_A = 10**-6.19        # Aragonite solubility
-        self.ADZ_top = 50           # top of the Aragonite dissolution zone in cm
-        self.ADZ_bot = 150          # bottom of the Aragonite dissolution zone in cm
-        self.sed_rate = 0.1         # sedimentation rate
+        self.K_C = 10**-6.37        # Calcite solubility (M^2)
+        self.K_A = 10**-6.19        # Aragonite solubility (M^2)
+        self.ADZ_top = 50           # top of the Aragonite dissolution zone (cm)
+        self.ADZ_bot = 150          # bottom of the Aragonite dissolution zone (cm)
+        self.sed_rate = 0.1         # sedimentation rate (cm/a)
         self.m = 2.48               # Power in def. of Omega_A (Eqn. 45)
         self.n = 2.8                # Power in def. of Omega_C (Eqn. 45)
-        self.rho_w = 1.023          # density of water
-        self.D_Ca_0 = 131.9         # diffusion coefficient of Ca used to scale everything
-        self.D_CO = 272.6           # scaled diffusion coefficient of CO3
+        self.rho_w = 1.023          # density of water (gm/cm^3)
+        self.D_Ca_0 = 131.9         # diffusion coefficient of Ca (cm^2/a) (used to scale to dimensionless units)
+        self.D_CO = 272.6           # scaled diffusion coefficient of CO3 (cm^2/a)
         
-        self.b = 5.0e-4             # sediment compressibility
-        self.beta = 0.1             # Hydraulic conductivity constant?
+        self.b = 5.0e-4             # sediment compressibility (Pa^-1)
+        self.beta = 0.1             # Hydraulic conductivity constant (cm/a)
         
-        self.k1 = 1.0               # reaction rate constants
+        self.k1 = 1.0               # reaction rate constants (a^-1)
         self.k2 = self.k1         
         self.k3 = 0.01
         self.k4 =self.k3
-        self.muA = 100.09
+        self.muA = 100.09           # (g/mol)
         
-        self.lamb = self.k3/self.k2    # constant in reaction terms 
+        self.lamb = self.k3/self.k2    # constant in reaction terms  
         self.nu1 = self.k1/self.k2     # constant in reaction terms
         self.nu2 = self.k4/self.k3     # constant in reaction terms
         
         # upper boundary condition values (x=0)
-        self.AR_0 = 0.6
+        self.AR_0 = 0.6                
         self.CA_0 = 0.3
-        self.c_ca_0 = 0.326#e-3 # Fortran multiplies instead??
-        self.c_co_0 = 0.326#e-3
+        self.c_ca_0 = 0.326 
+        self.c_co_0 = 0.326
         self.phi_0 = 0.8            # steady state 0.6, oscillations 0.8
 
-        self.rho_s0 = 2.95*self.AR_0 + 2.71*self.CA_0 + 2.8*(1 - (self.AR_0 + self.CA_0)) # initial sediment density
+        self.rho_s0 = 2.95*self.AR_0 + 2.71*self.CA_0 + 2.8*(1 - (self.AR_0 + self.CA_0)) # initial sediment density (g/cm^3)
 
 
         # initial condtions
@@ -240,7 +85,7 @@ class LHeureux:
         self.phi_init = 0.8         # steady state 0.5, oscillations 0.8
 
         # more params (which depend on initial/boundary conditions)
-        self.delta = self.rho_s0/(self.muA*self.np.sqrt(self.K_C))   # part of the Ca, CO3 reaction terms 
+        self.delta = self.rho_s0/(self.muA*self.np.sqrt(self.K_C))   # part of the Ca, CO3 reaction terms (cm^-3)
         self.phi_NR = self.phi_init                                  # porosity in the absence of reactions
         self.phi_inf = 0.01                                          # "a parameter" in Eqn 23
         # porosity diffusion coefficient
@@ -248,7 +93,7 @@ class LHeureux:
                     (1 / ( self.b*self.g*self.rho_w*( self.phi_NR - self.phi_inf ) ) )*\
                     (1 - np.exp( -10*( 1 - self.phi_init ) / self.phi_init) )*( 1 / self.D_Ca_0 )
         
-        # scaling factors
+        # scaling factors, used to convert to dimensionless units
         self.x_scale = self.D_Ca_0/self.sed_rate
         self.t_scale = self.D_Ca_0/self.sed_rate**2
         self.v_scale = self.sed_rate
@@ -264,24 +109,21 @@ class LHeureux:
     
     # velocities
     def U(self, phi):
-        # solid velocity
+        # solid velocity, eqn 46
         u = 1 - ( 1 / self.sed_rate )*\
             ( self.K(self.phi_0) * ( 1 - self.phi_0 ) - self.K(phi) * ( 1 - phi ) )*\
             ( self.rho_s0 / self.rho_w - 1 )
         return u
 
     def W(self,phi):
-        # solute velocity
+        # solute velocity, eqn 47
         w = 1 - ( 1 / self.sed_rate )*\
             ( self.K(self.phi_0) * ( 1 - self.phi_0 ) + self.K(phi) * ( 1 - phi )**2 / phi )*\
             ( self.rho_s0 / self.rho_w - 1 )
         
         return w
     
-    # reaction terms
-    
-    # Omegas
-
+    # Saturation factors 
     def Omega_A(self, c_ca, c_co, x):
         sp = c_ca*c_co*self.K_C/self.K_A - 1 
         Omega_PA = (max(0.0,sp))**self.m
@@ -324,7 +166,7 @@ class LHeureux:
                ( AR * self.Omega_A(c_ca, c_co, x) - self.lamb * CA * self.Omega_C(c_ca, c_co) )
     
     
-    # diffusion coefficients eqn 6 L'Heureux
+    # diffusion coefficients, dissolved ions (eqn 6)
     
     # Ca ions
     def d_c_ca(self, phi):
@@ -337,7 +179,7 @@ class LHeureux:
         return self.D_CO/self.D_Ca_0*(1 / ( 1 - 2*np.log(phi) ) )
 
     ##### functions which calculate the full RHS of eqns 40-43 ######
-    ##### with spatial derivatives stencils applied for MOL #####
+    #####   with spatial derivative stencils applied for MOL   ######
 
     # Aragonite (eqn 40)
     def RHS_AR(self, AR, CA, c_ca, c_co, phi, x, h):
@@ -348,15 +190,16 @@ class LHeureux:
         
         for i in range(0,len(x)):
             
+            # x = 0 BC, Dirichlet
             if (i==0):
                 dAR_dt[i] = 0
-                
+            
+            # x = Lx, no prescribed BC
             elif (i==len(x)-1):
                 dAR_dt[i] = -u[i]*( AR[i] - AR[i-1] ) / h + self.R_AR(AR[i], CA[i], c_ca[i], c_co[i], x[i])
-                
+            
             else:
-                dAR_dt[i] = -u[i]*( AR[i+1] - AR[i-1] ) / (2*h) + self.R_AR(AR[i], CA[i], c_ca[i], c_co[i], x[i])
-                
+                dAR_dt[i] = -u[i]*( AR[i+1] - AR[i-1] ) / (2*h) + self.R_AR(AR[i], CA[i], c_ca[i], c_co[i], x[i])    
         
         return dAR_dt
 
@@ -369,15 +212,16 @@ class LHeureux:
         
         for i in range(0,len(x)):
             
+            # x = 0 BC, Dirichlet
             if (i==0):
                 dCA_dt[i] = 0
-                
+            
+            # x = Lx, no prescribed BC
             elif (i==len(x)-1):
                 dCA_dt[i] = -u[i]*( CA[i] - CA[i-1] ) / h + self.R_CA(AR[i], CA[i], c_ca[i], c_co[i], x[i])
                 
             else:
-                dCA_dt[i] = -u[i]*( CA[i+1] - CA[i-1] ) / (2*h) + self.R_CA(AR[i], CA[i], c_ca[i], c_co[i], x[i])
-                
+                dCA_dt[i] = -u[i]*( CA[i+1] - CA[i-1] ) / (2*h) + self.R_CA(AR[i], CA[i], c_ca[i], c_co[i], x[i])     
         
         return dCA_dt
     
@@ -398,11 +242,13 @@ class LHeureux:
         
         for i in range(0,len(x)):
             
+            # x = 0 BC, Dirichlet
             if (i==0):
                 dc_ca_dt[i] = 0
-                
+            
+            # x = Lx BC, df/dx = 0
             elif (i==len(x)-1):
-                # BC: df/dx = 0, no diffusive flux on boundary
+                
                 dc_ca_dt[i] = - w[i]*( c_ca[i] - c_ca[i-1] ) / (h) +\
                               ( 1 / phi[i] ) * ( phi[i-2] * self.d_c_ca(phi[i-2]) * c_ca[i-2] -\
                                                    phi[i-1] * self.d_c_ca(phi[i-1]) * c_ca[i-1] ) / h**2  +\
@@ -433,11 +279,12 @@ class LHeureux:
         
         for i in range(0,len(x)):
             
+            # x = 0 BC, Dirichlet
             if (i==0):
                 dc_co_dt[i] = 0
-                
+            
+            # x = Lx BC, df/dx = 0
             elif (i==len(x)-1):
-                # BC: df/dx = 0, no diffusive flux on the boundary
                 dc_co_dt[i] = - w[i]*( c_co[i] - c_co[i-1] ) / h +\
                               ( 1 / phi[i] )*( phi[i-2] * self.d_c_co(phi[i-2]) * c_co[i-2] -\
                                                phi[i-1] * self.d_c_co(phi[i-1]) * c_co[i-1] ) / h**2 +\
@@ -448,8 +295,7 @@ class LHeureux:
                               (1 / phi[i] )*( phi_half[i]   * d_co_half[i]   * ( c_co[i+1] - c_co[i] ) -\
                                               phi_half[i-1] * d_co_half[i-1] * ( c_co[i] - c_co[i-1] ) ) / h**2 +\
                               self.R_c_co(AR[i], CA[i], c_ca[i], c_co[i], phi[i], x[i])
-                
-        
+                     
         return dc_co_dt
 
     # porosity (eqn 43)
@@ -462,13 +308,12 @@ class LHeureux:
         
         for i in range(0,len(x)):
             
+            # x = 0 BC, Dirichlet
             if (i==0):
                 dphi_dt[i] = 0
-                
+            
+            # x = Lx BC, df/dx = 0
             elif (i==len(x)-1):
-                
-                # BC: df/dx = 0, no diffusive flux on the boundary
-                
                 dphi_dt[i] = - ( w[i] * phi[i] - w[i-1] * phi[i-1] ) / h +\
                              self.d_phi*( phi[i-2] - phi[i-1] ) / h**2 +\
                              self.R_phi(AR[i], CA[i], c_ca[i], c_co[i], phi[i], x[i])
@@ -493,18 +338,18 @@ class LHeureux:
         return np.concatenate([dAR_dt, dCA_dt, dc_ca_dt, dc_co_dt, dphi_dt]) 
 
 
-## set up ##
+#################################################################
 
 # create instance of the model class
 lh = LHeureux()
 
-nnx = 250
+# set up the spatial grid
+nnx = 200
 L_x = 500/lh.x_scale 
 h = L_x/(nnx-1)
-
-# define soln arrays and fill with initial conditions
 x = np.linspace(0, L_x,nnx)
 
+# set the initial conditions for each soln variable
 AR   = np.ones(nnx)*lh.AR_init
 CA   = np.ones(nnx)*lh.CA_init
 c_ca = np.ones(nnx)*lh.c_ca_init
@@ -520,15 +365,14 @@ X_new = np.zeros([nnx*5])
 
 # time integration values
 t0 = 0.0
-tf = 500/lh.t_scale # sim time in a, scaled to dimensionless form 
+tf = 50/lh.t_scale # sim time in a, scaled to dimensionless form 
 
-# labels corresponding the the soln variables
-labels=['AR', 'CA', 'c_ca', 'c_co', 'phi']
+# labels corresponding the the soln variables, for print statements
+labels=['AR  ', 'CA  ', 'c_ca', 'c_co', 'phi ']
 
 # run settings 
-verbose = True
-method = 'ivp'
-ft_output = False
+verbose = True      # print out extra info at each step, for debugging
+method = 'ivp'      # choice of method for time integration
 
 
 if (method=='Euler'):
@@ -573,30 +417,28 @@ if (method=='Euler'):
                 # maximum and min soln values
                 print('%s min, max =%.3f , %.3f' %(labels[j], np.min(X_new[j*nnx:(j+1)*nnx]), np.max(X_new[j*nnx:(j+1)*nnx])))
             
-            print('U min, max = %.3f , %.3f' %(np.min(lh.U(X_new[4*nnx:5*nnx])), np.max(lh.U(X_new[4*nnx:5*nnx]))))
-            print('W min, max = %.3f , %.3f' %(np.min(lh.W(X_new[4*nnx:5*nnx])), np.max(lh.W(X_new[4*nnx:5*nnx]))))
-            # output all values to file at each tstep
+            print('U    min, max = %.3f , %.3f' %(np.min(lh.U(X_new[4*nnx:5*nnx])), np.max(lh.U(X_new[4*nnx:5*nnx]))))
+            print('W    min, max = %.3f , %.3f' %(np.min(lh.W(X_new[4*nnx:5*nnx])), np.max(lh.W(X_new[4*nnx:5*nnx]))))
+            
 
         vel_U.append(lh.U(X_new[4*nnx:5*nnx]))            
         vel_W.append(lh.W(X_new[4*nnx:5*nnx]))            
         
-        # check for nans
+        # check for nans, exit if we see them
         isnan = np.isnan(X_new)
         if (np.any(isnan)):
             print('nan encountered, exiting')
-            # maybe also output data to file??
             break
             
         # move the new values into X
         X = np.copy(X_new)
-       
-        
-        
+
     
     # convert soln lists to arrays
     soln = np.array(soln)
     vel_U = np.array(vel_U)
     vel_W = np.array(vel_W)
+    
     # indicies need swapping to match soln from ivp_solve
     soln = np.transpose(soln)
     vel_U = np.transpose(vel_U)
@@ -604,7 +446,7 @@ if (method=='Euler'):
     
     
 elif(method=='ivp'):
-    # instead call scipy integration
+    # use the scipy solve_ivp
 
     print('using ivp with method=RK23')
 
@@ -618,20 +460,16 @@ elif(method=='ivp'):
     print('average time step=', tf/len(t_arr))
 
     delta_t=1
-    vel_U=np.zeros((5*nnx,len(t_arr)))
-    vel_W=np.zeros((5*nnx,len(t_arr)))
+    vel_U=np.array(lh.U(soln[4*nnx:,:]))
+    vel_W=np.array(lh.W(soln[4*nnx:,:]))
 
 ###########################################################################################
 
-#print(np.shape(soln))
-#print(np.shape(t_arr))
-#print(len(t_arr))
+##### save results to vtu, ascii format
 
-export_to_vtu2(len(t_arr),x,soln,vel_U,vel_W,lh.ADZ_bot,lh.ADZ_top,lh.x_scale,delta_t)
+export_to_vtu2(len(t_arr), x, soln, vel_U, vel_W, lh.ADZ_bot, lh.ADZ_top, lh.x_scale, delta_t)
 
-
-
-# first take time series at fixed depth
+# Take time series at fixed depth
 depths = [int(nnx/4), int(nnx/2), int(3*nnx/4),  nnx-1]
 for i in depths:
     export_to_ascii('x', i, t_arr, soln[i,:], soln[nnx+i,:], soln[2*nnx+i,:],\
