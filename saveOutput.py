@@ -3,7 +3,6 @@
 ###  L'Heureux Diagenesis modelling ###
 
 import numpy as np
-
 # functions for saving output of python model to file
 # ASCII and VTU formats
 

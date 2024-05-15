@@ -6,7 +6,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
-from numba import jit
+from numba import jit, float64
+from numba.experimental import jitclass
+import time
 
 from saveOutput import export_to_ascii, export_to_vtu, export_to_vtu2
 
@@ -26,12 +28,57 @@ def heaviside(x,xbot,xtop,xscale):
 
 
 ###############################################################################
+
+# for the jit-compiler, we need to specify the type of all parameters in the class
+spec = [
+    ('g', float64),
+    ('K_C', float64),
+    ('K_A', float64),
+    ('ADZ_bot', float64),
+    ('ADZ_top', float64),
+    ('m', float64),
+    ('n', float64),
+    ('sed_rate', float64),
+    ('rho_w', float64),
+    ('D_Ca_0', float64),
+    ('D_CO', float64),
+    ('b', float64),
+    ('beta', float64),
+    ('k1', float64),
+    ('k2', float64),
+    ('k3', float64),
+    ('k4', float64),
+    ('muA', float64),
+    ('lamb', float64),
+    ('nu1', float64),
+    ('nu2', float64),
+    ('AR_0', float64),
+    ('CA_0', float64),
+    ('c_ca_0', float64),
+    ('c_co_0', float64),
+    ('phi_0', float64),
+    ('rho_s0', float64),
+    ('AR_init', float64),
+    ('CA_init', float64),
+    ('c_ca_init', float64),
+    ('c_co_init', float64),
+    ('phi_init', float64),
+    ('delta', float64),
+    ('phi_NR', float64),
+    ('phi_inf', float64),
+    ('d_phi', float64),
+    ('x_scale', float64),
+    ('t_scale', float64),
+    ('v_scale', float64),
+    ('Da', float64),
+]
+
 # This class contains the functions and parameters that are used to calculate
 # the RHS of eqns 40-43 of L'Heureux (2018)
-
+@jitclass(spec)
 class LHeureux:
     
-    import numpy as np
+    #import numpy as np
     
     
     # define all params as instance vars
@@ -85,7 +132,7 @@ class LHeureux:
         self.phi_init = 0.8         # steady state 0.5, oscillations 0.8
 
         # more params (which depend on initial/boundary conditions)
-        self.delta = self.rho_s0/(self.muA*self.np.sqrt(self.K_C))   # part of the Ca, CO3 reaction terms (cm^-3)
+        self.delta = self.rho_s0/(self.muA*np.sqrt(self.K_C))   # part of the Ca, CO3 reaction terms (cm^-3)
         self.phi_NR = self.phi_init                                  # porosity in the absence of reactions
         self.phi_inf = 0.01                                          # "a parameter" in Eqn 23
         # porosity diffusion coefficient
@@ -184,7 +231,7 @@ class LHeureux:
     # Aragonite (eqn 40)
     def RHS_AR(self, AR, CA, c_ca, c_co, phi, x, h):
         
-        dAR_dt = np.zeros(len(x), dtype=np.float64())
+        dAR_dt = np.zeros(len(x))
         
         u = self.U(phi)
         
@@ -206,7 +253,7 @@ class LHeureux:
     # Calcite (eqn 41)
     def RHS_CA(self, AR, CA, c_ca, c_co, phi, x, h):
         
-        dCA_dt = np.zeros(len(x), dtype=np.float64())
+        dCA_dt = np.zeros(len(x))
         
         u = self.U(phi)
         
@@ -228,12 +275,12 @@ class LHeureux:
     # Ca ions (eqn 42)
     def RHS_c_ca(self, AR, CA, c_ca, c_co, phi, x, h):
         
-        dc_ca_dt = np.zeros(len(x), dtype=np.float64())
+        dc_ca_dt = np.zeros(len(x))
         
         w = self.W(phi)
         
-        phi_half = np.zeros(len(x)-1, dtype=np.float64())
-        d_ca_half = np.zeros(len(x)-1, dtype=np.float64())
+        phi_half = np.zeros(len(x)-1)
+        d_ca_half = np.zeros(len(x)-1)
         
         for i in range(0,len(x)-1):
             
@@ -265,12 +312,12 @@ class LHeureux:
     # CO3 ions (eqn 42)
     def RHS_c_co(self, AR, CA, c_ca, c_co, phi, x, h):
         
-        dc_co_dt = np.zeros(len(x), dtype=np.float64())
+        dc_co_dt = np.zeros(len(x))
         
         w = self.W(phi)
         
-        phi_half = np.zeros(len(x)-1, dtype=np.float64())
-        d_co_half = np.zeros(len(x)-1, dtype=np.float64())
+        phi_half = np.zeros(len(x)-1)
+        d_co_half = np.zeros(len(x)-1)
         
         for i in range(0,len(x)-1):
             
@@ -301,7 +348,7 @@ class LHeureux:
     # porosity (eqn 43)
     def RHS_phi(self, AR, CA, c_ca, c_co, phi, x, h):
         
-        dphi_dt = np.zeros(len(x), dtype=np.float64())
+        dphi_dt = np.zeros(len(x))
         
         w = self.W(phi)
         
@@ -335,7 +382,7 @@ class LHeureux:
         dc_co_dt = self.RHS_c_co(X[0:nnx], X[nnx:2*nnx], X[2*nnx:3*nnx], X[3*nnx:4*nnx], X[4*nnx:5*nnx], x, h)
         dphi_dt  = self.RHS_phi( X[0:nnx], X[nnx:2*nnx], X[2*nnx:3*nnx], X[3*nnx:4*nnx], X[4*nnx:5*nnx], x, h)
         
-        return np.concatenate([dAR_dt, dCA_dt, dc_ca_dt, dc_co_dt, dphi_dt]) 
+        return np.concatenate((dAR_dt, dCA_dt, dc_ca_dt, dc_co_dt, dphi_dt)) 
 
 
 #################################################################
@@ -372,7 +419,7 @@ labels=['AR  ', 'CA  ', 'c_ca', 'c_co', 'phi ']
 
 # run settings 
 verbose = True      # print out extra info at each step, for debugging
-method = 'ivp'      # choice of method for time integration
+method = 'Euler'      # choice of method for time integration
 
 
 if (method=='Euler'):
@@ -386,6 +433,7 @@ if (method=='Euler'):
     vel_U = []
     vel_W = []
     
+    start = time.time()
     for i in range(0,len(t_arr)):
         
         print('***********************istep=',i)
@@ -433,7 +481,8 @@ if (method=='Euler'):
         # move the new values into X
         X = np.copy(X_new)
 
-    
+    end = time.time()    
+
     # convert soln lists to arrays
     soln = np.array(soln)
     vel_U = np.array(vel_U)
@@ -449,20 +498,23 @@ elif(method=='ivp'):
     # use the scipy solve_ivp
 
     print('using ivp with method=RK23')
-
+    start = time.time()
     soln_full = solve_ivp(lh.X_RHS, (t0,tf), X, args=(nnx, x, h), method='RK23')
-
+    end = time.time()
+    
     # produce separate soln and t_arrs to match output of Euler mode
     soln = soln_full.y
     t_arr = soln_full.t
 
     print('nb of time steps=',len(t_arr))
     print('average time step=', tf/len(t_arr))
+    
 
     delta_t=1
     vel_U=np.array(lh.U(soln[4*nnx:,:]))
     vel_W=np.array(lh.W(soln[4*nnx:,:]))
 
+print('time elapsed=',  end-start)
 ###########################################################################################
 
 ##### save results to vtu, ascii format
