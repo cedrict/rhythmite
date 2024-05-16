@@ -417,12 +417,14 @@ labels=['AR  ', 'CA  ', 'c_ca', 'c_co', 'phi ']
 verbose = True        # print out extra info at each step, for debugging
 method = 'Euler'      # choice of method for time integration
                       # options currently: 'Euler','RK23','RK45','DOP853'
-output_freq = 100
+                      
+print_freq = 100      # frequency of print statements in Euler mode
+output_freq = 10      # frequency of soln storage in Euler mode
 
 if (method=='Euler'):
     
     # set the timestep manually
-    delta_t = 1.0e-6
+    delta_t = 1.319e-2/lh.t_scale   # timestep in a, 1.13e-2/tsc = 10^-6 in scaled time
     t_arr = np.arange(t0, tf, delta_t)
 
     # output array for whole solution
@@ -433,12 +435,13 @@ if (method=='Euler'):
     start = time.time()
     for i in range(0,len(t_arr)):
         
-        if (i%output_freq==0):
+        if (i%print_freq==0):
             print('***********************istep=',i)
             print('t=%.2e / tf=%.2e' %(t_arr[i],tf))
         
-        # first append current soln to storage
-        soln.append(X)
+        if (i%output_freq==0):
+            # first append current soln to storage
+            soln.append(X)
         
         # calculate the RHS
         dX_dt = lh.X_RHS(t_arr, X, nnx, x, h)
@@ -447,7 +450,7 @@ if (method=='Euler'):
         X_new = X + delta_t*dX_dt
         
         # check for negative concentrations
-        if (i%output_freq==0):
+        if (i%print_freq==0):
             print('Negative AR, CA, ca, co, phi:%i, %i, %i, %i, %i'\
                   %(np.count_nonzero(X_new[0:nnx] < 0), np.count_nonzero(X_new[nnx:2*nnx] < 0),\
                     np.count_nonzero(X_new[2*nnx:3*nnx] < 0), np.count_nonzero(X_new[3*nnx:4*nnx] < 0),\
@@ -465,7 +468,7 @@ if (method=='Euler'):
             
         # print out min, max values for each t step if needed
         if(verbose):
-            if (i%output_freq==0):
+            if (i%print_freq==0):
                 for j in range(0,5):
                     # maximum and min soln values
                     print('%s min, max = %.3f , %.3f' %(labels[j], np.min(X_new[j*nnx:(j+1)*nnx]), np.max(X_new[j*nnx:(j+1)*nnx])))
@@ -473,9 +476,10 @@ if (method=='Euler'):
                 print('U    min, max = %.3f , %.3f' %(np.min(lh.U(X_new[4*nnx:5*nnx])), np.max(lh.U(X_new[4*nnx:5*nnx]))))
                 print('W    min, max = %.3f , %.3f' %(np.min(lh.W(X_new[4*nnx:5*nnx])), np.max(lh.W(X_new[4*nnx:5*nnx]))))
             
-
-        vel_U.append(lh.U(X_new[4*nnx:5*nnx]))            
-        vel_W.append(lh.W(X_new[4*nnx:5*nnx]))            
+        
+        if (i%output_freq==0):
+            vel_U.append(lh.U(X_new[4*nnx:5*nnx]))            
+            vel_W.append(lh.W(X_new[4*nnx:5*nnx]))            
         
         # check for nans, exit if we see them
         isnan = np.isnan(X_new)
@@ -533,11 +537,12 @@ print('time elapsed=',  end-start)
 # Take time series at fixed depth
 depths = [int(nnx/4), int(nnx/2), int(3*nnx/4),  nnx-1]
 for i in depths:
-    export_to_ascii('x', i, t_arr, soln[i,:], soln[nnx+i,:], soln[2*nnx+i,:],\
+    export_to_ascii('x', i, t_arr[::output_freq], soln[i,:], soln[nnx+i,:], soln[2*nnx+i,:],\
                     soln[3*nnx+i,:], soln[4*nnx+i,:], lh.U(soln[4*nnx+i,:]), lh.W(soln[4*nnx+i,:]))
 
 # then take depth profiles at fixed time
-times = [int(len(t_arr)/4), int(len(t_arr)/2), int(3*len(t_arr)/4),  len(t_arr)-1]
+times = [int(len(t_arr[::output_freq])/4), int(len(t_arr[::output_freq])/2),\
+         int(3*len(t_arr[::output_freq])/4),  len(t_arr[::output_freq])-1]
 for i in times:
     export_to_ascii('t', i, x, soln[0:nnx,i], soln[nnx:2*nnx,i], soln[2*nnx:3*nnx,i],\
                     soln[3*nnx:4*nnx,i], soln[4*nnx:5*nnx,i], lh.U(soln[4*nnx:5*nnx,i]), lh.W(soln[4*nnx:5*nnx,i]))
