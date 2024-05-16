@@ -47,7 +47,7 @@ def plotSpatial(df, filename, benchmarkComp):
     plt.xlabel('x (cm)')
     plt.ylabel('Concentrations')
     plt.xlim(0,500)
-    plt.ylim(0,1.6)
+    plt.ylim(0,2.3)
     plt.savefig('%s.png'%(filename))
     plt.clf()
     
@@ -80,7 +80,7 @@ def plotTemporal(df, filename):
       plt.plot(t_plot, df.co, label=df.columns[4])
       plt.legend()
       plt.xlim(0,np.array(t_plot)[-1])
-      plt.ylim(0,1.4)
+      plt.ylim(0,2.3)
       plt.xlabel('t (ka)')
       plt.ylabel('Concentrations') 
       plt.savefig('%s.png'%(filename))
@@ -89,7 +89,9 @@ def plotTemporal(df, filename):
 
 def plotFig3e():
     # plot the digitized Figure 3e vals from L'Heureux (2018)
+    # This is the 'steady-state' case, phi_0 = 0.6, phi_init = 0.5
     # as an addition to a plot from code output
+    
     
     # use default colour sequence from matplotlib to match data
     # order should be AR, CA, Po, Ca, Co
@@ -122,7 +124,7 @@ def plotHeaviside(x):
 ##############################################################################
 
 # switch on or off the overplotting of the fig3e data
-plotBench = True
+plotBench = False
 
 # read and plot all depth profiles
 
@@ -138,23 +140,6 @@ times_files = glob.glob('solution_x_*.ascii')
 for i in range(0,len(times_files)):
     x = (pd.read_csv(times_files[i],delim_whitespace=True)).shift(axis=1).iloc[:,1:]
     plotTemporal(x,times_files[i].rstrip('.ascii'))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

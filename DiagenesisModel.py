@@ -77,9 +77,6 @@ spec = [
 @jitclass(spec)
 class LHeureux:
     
-    #import numpy as np
-    
-    
     # define all params as instance vars
     # this way we can easily modify them at the instance level
     # i.e. for parameter searches
@@ -417,9 +414,10 @@ tf = 50/lh.t_scale # sim time in a, scaled to dimensionless form
 labels=['AR  ', 'CA  ', 'c_ca', 'c_co', 'phi ']
 
 # run settings 
-verbose = True      # print out extra info at each step, for debugging
+verbose = True        # print out extra info at each step, for debugging
 method = 'Euler'      # choice of method for time integration
-
+                      # options currently: 'Euler','RK23','RK45','DOP853'
+output_freq = 100
 
 if (method=='Euler'):
     
@@ -435,8 +433,9 @@ if (method=='Euler'):
     start = time.time()
     for i in range(0,len(t_arr)):
         
-        print('***********************istep=',i)
-        print('t=%.2e / tf=%.2e' %(t_arr[i],tf))
+        if (i%output_freq==0):
+            print('***********************istep=',i)
+            print('t=%.2e / tf=%.2e' %(t_arr[i],tf))
         
         # first append current soln to storage
         soln.append(X)
@@ -448,8 +447,14 @@ if (method=='Euler'):
         X_new = X + delta_t*dX_dt
         
         # check for negative concentrations
+        if (i%output_freq==0):
+            print('Negative AR, CA, ca, co, phi:%i, %i, %i, %i, %i'\
+                  %(np.count_nonzero(X_new[0:nnx] < 0), np.count_nonzero(X_new[nnx:2*nnx] < 0),\
+                    np.count_nonzero(X_new[2*nnx:3*nnx] < 0), np.count_nonzero(X_new[3*nnx:4*nnx] < 0),\
+                    np.count_nonzero(X_new[4*nnx:5*nnx] < 0)) )
+        
+        # apply limits if variables become unphysical
         for j in range(0,5):
-            print('Negative %s:%i'%(labels[j], np.count_nonzero(X_new[j*nnx:(j+1)*nnx] < 0)))
             
             if (j==0 or j==1):
                 X_new[j*nnx:(j+1)*nnx] = np.clip(X_new[j*nnx:(j+1)*nnx], 0.0, 1.0)
@@ -460,12 +465,13 @@ if (method=='Euler'):
             
         # print out min, max values for each t step if needed
         if(verbose):
-            for j in range(0,5):
-                # maximum and min soln values
-                print('%s min, max =%.3f , %.3f' %(labels[j], np.min(X_new[j*nnx:(j+1)*nnx]), np.max(X_new[j*nnx:(j+1)*nnx])))
-            
-            print('U    min, max = %.3f , %.3f' %(np.min(lh.U(X_new[4*nnx:5*nnx])), np.max(lh.U(X_new[4*nnx:5*nnx]))))
-            print('W    min, max = %.3f , %.3f' %(np.min(lh.W(X_new[4*nnx:5*nnx])), np.max(lh.W(X_new[4*nnx:5*nnx]))))
+            if (i%output_freq==0):
+                for j in range(0,5):
+                    # maximum and min soln values
+                    print('%s min, max = %.3f , %.3f' %(labels[j], np.min(X_new[j*nnx:(j+1)*nnx]), np.max(X_new[j*nnx:(j+1)*nnx])))
+                
+                print('U    min, max = %.3f , %.3f' %(np.min(lh.U(X_new[4*nnx:5*nnx])), np.max(lh.U(X_new[4*nnx:5*nnx]))))
+                print('W    min, max = %.3f , %.3f' %(np.min(lh.W(X_new[4*nnx:5*nnx])), np.max(lh.W(X_new[4*nnx:5*nnx]))))
             
 
         vel_U.append(lh.U(X_new[4*nnx:5*nnx]))            
@@ -493,12 +499,12 @@ if (method=='Euler'):
     vel_W = np.transpose(vel_W)
     
     
-elif(method=='ivp'):
+elif(method=='RK23' or method=='RK45' or method=='DOP853'):
     # use the scipy solve_ivp
 
-    print('using ivp with method=RK23')
+    print('using ivp with method=%s'%(method))
     start = time.time()
-    soln_full = solve_ivp(lh.X_RHS, (t0,tf), X, args=(nnx, x, h), method='RK23')
+    soln_full = solve_ivp(lh.X_RHS, (t0,tf), X, args=(nnx, x, h), method=method)
     end = time.time()
     
     # produce separate soln and t_arrs to match output of Euler mode
@@ -512,13 +518,17 @@ elif(method=='ivp'):
     delta_t=1
     vel_U=np.array(lh.U(soln[4*nnx:,:]))
     vel_W=np.array(lh.W(soln[4*nnx:,:]))
+else:
+    print('selected method is not a supported choice')
+    print('Options are Euler, RK23, RK45, DOP853')
+
 
 print('time elapsed=',  end-start)
 ###########################################################################################
 
 ##### save results to vtu, ascii format
 
-export_to_vtu2(len(t_arr), x, soln, vel_U, vel_W, lh.ADZ_bot, lh.ADZ_top, lh.x_scale, delta_t)
+#export_to_vtu2(len(t_arr), x, soln, vel_U, vel_W, lh.ADZ_bot, lh.ADZ_top, lh.x_scale, delta_t)
 
 # Take time series at fixed depth
 depths = [int(nnx/4), int(nnx/2), int(3*nnx/4),  nnx-1]
