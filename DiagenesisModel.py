@@ -410,23 +410,26 @@ X_new = np.zeros([nnx*5])
 t0 = 0.0
 tf = 50/lh.t_scale # sim time in a, scaled to dimensionless form 
 
+# set the timestep manually ONLY used in Euler mode
+delta_t = 1.319e-2*1/lh.t_scale   # timestep in a, 1.13e-2/tsc = 10^-6 in scaled time
+t_arr = np.arange(t0, tf, delta_t)
+
+
 # labels corresponding the the soln variables, for print statements
 labels=['AR  ', 'CA  ', 'c_ca', 'c_co', 'phi ']
 
 # run settings 
 verbose = True        # print out extra info at each step, for debugging
-method = 'Euler'      # choice of method for time integration
+method = 'RK23'      # choice of method for time integration
                       # options currently: 'Euler','RK23','RK45','DOP853'
                       
 print_freq = 100      # frequency of print statements in Euler mode
-output_freq = 10      # frequency of soln storage in Euler mode
+output_freq = 1         # frequency of soln storage
+
+t_eval = t_arr[::output_freq] # times at which to store the solution, for ivp routines
 
 if (method=='Euler'):
     
-    # set the timestep manually
-    delta_t = 1.319e-2/lh.t_scale   # timestep in a, 1.13e-2/tsc = 10^-6 in scaled time
-    t_arr = np.arange(t0, tf, delta_t)
-
     # output array for whole solution
     soln = []
     vel_U = []
@@ -508,12 +511,18 @@ elif(method=='RK23' or method=='RK45' or method=='DOP853'):
 
     print('using ivp with method=%s'%(method))
     start = time.time()
-    soln_full = solve_ivp(lh.X_RHS, (t0,tf), X, args=(nnx, x, h), method=method)
+    if (output_freq==1):
+        # allow ivp_solve to output it's own full soln
+        soln_full = solve_ivp(lh.X_RHS, (t0,tf), X, args=(nnx, x, h), method=method)
+    else:
+        # use subsampled t_arr points for evaluation
+        soln_full = solve_ivp(lh.X_RHS, (t0,tf), X, args=(nnx, x, h), method=method, t_eval=t_eval)
     end = time.time()
     
     # produce separate soln and t_arrs to match output of Euler mode
     soln = soln_full.y
     t_arr = soln_full.t
+    t_eval = t_arr
 
     print('nb of time steps=',len(t_arr))
     print('average time step=', tf/len(t_arr))
@@ -537,12 +546,12 @@ print('time elapsed=',  end-start)
 # Take time series at fixed depth
 depths = [int(nnx/4), int(nnx/2), int(3*nnx/4),  nnx-1]
 for i in depths:
-    export_to_ascii('x', i, t_arr[::output_freq], soln[i,:], soln[nnx+i,:], soln[2*nnx+i,:],\
+    export_to_ascii('x', i, t_eval, soln[i,:], soln[nnx+i,:], soln[2*nnx+i,:],\
                     soln[3*nnx+i,:], soln[4*nnx+i,:], lh.U(soln[4*nnx+i,:]), lh.W(soln[4*nnx+i,:]))
 
 # then take depth profiles at fixed time
-times = [int(len(t_arr[::output_freq])/4), int(len(t_arr[::output_freq])/2),\
-         int(3*len(t_arr[::output_freq])/4),  len(t_arr[::output_freq])-1]
+times = [int(len(t_eval)/4), int(len(t_eval)/2),\
+         int(3*len(t_eval)/4),  len(t_eval)-1]
 for i in times:
     export_to_ascii('t', i, x, soln[0:nnx,i], soln[nnx:2*nnx,i], soln[2*nnx:3*nnx,i],\
                     soln[3*nnx:4*nnx,i], soln[4*nnx:5*nnx,i], lh.U(soln[4*nnx:5*nnx,i]), lh.W(soln[4*nnx:5*nnx,i]))
