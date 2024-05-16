@@ -1,0 +1,504 @@
+\documentclass[a4paper]{article}
+\usepackage[cm]{fullpage}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage{bm}
+\usepackage{listings}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+
+\newcommand{\nn}{\nonumber}
+\newcommand{\python}{\color{darkgray} \sffamily }
+\lstset{ 
+  language=Python,
+  backgroundcolor=\color{white},   % choose the background color; you must add \usepackage{xcolor}; should come as last argument
+  basicstyle=\footnotesize,        % the size of the fonts that are used for the code
+  breakatwhitespace=false,         % sets if automatic breaks should only happen at whitespace
+  breaklines=true,                 % sets automatic line breaking
+  captionpos=b,                    % sets the caption-position to bottom
+  frame=single,                    % adds a frame around the code
+  keepspaces=true,                 % keeps spaces in text, useful for keeping indentation of code 
+  keywordstyle=\color{blue},       % keyword style
+}
+
+
+\begin{document}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection*{Context}
+
+In the spring of 2024 I was approached by Emilia with regards to an article she and 
+her team wished to reproduce. Although recently published, and written by a renowned computational
+geoscientist, this article did not include link to a code. 
+The article in question is \cite{lheu18} 
+Can we reproduce the results of the paper using only the equations provided in the paper?
+
+%----------------------------
+\subsubsection*{The PDEs of the physical problem}
+
+The whole geological context is a bit lost on me so I/we approached the project with a pragmatic 
+attitude: We must solve 5 coupled nonlinear advection-diffusion-reaction PDEs in a 1D domain.
+
+The model describes the evolution of the concentrations of five variables:
+\begin{itemize}
+\item Solids: two minerals which dissolve and (re)precipitate from/to the same
+solutes. They are expressed as proportions of the solid phase, and must
+accordingly be non-negative, and their sum must be smaller or equal to one.
+$C_C$ is the proportion of calcite in the solid phase, and $C_A$ is the 
+proportion of aragonite in the solid phase.
+
+\item Solutes $\hat{c}_k$, where $k \in \{ Ca,CO3\}$.
+with $\hat{c}_{Ca}$: calcium concentration in pore water, and
+$\hat{c}_{CO3}$: carbonate concentration in pore water.
+
+\item Porosity $\phi$
+\end{itemize}
+
+
+The equations involving our five unknowns $C_A$, $C_C$, $\hat{c}_k$ and $\phi$ are as follows (in
+order to highlight how nonlinear and coupled these equations are, I have colored the 
+five unknowns throughout):
+\begin{eqnarray}
+\frac{\partial {\color{teal} C_A}}{\partial t} 
+&=& -U({\color{teal}\phi}) \frac{\partial {\color{teal}C_A}}{\partial x} 
+- Da[(1-{\color{teal}C_A}){\color{teal}C_A}(\Omega_{DA}-\nu_1\Omega_{PA})+
+\lambda {\color{teal}C_AC_C} (\Omega_{PC}-\nu_2\Omega_{DC})]
+\nn\\
+\frac{\partial {\color{teal}C_C}}{\partial t} 
+&=& -U({\color{teal}\phi}) \frac{\partial {\color{teal}C_C}}{\partial x}  
++ Da[(1-{\color{teal}C_C}){\color{teal}C_C}(\Omega_{PC}-\nu_2\Omega_{DC})+
+\lambda {\color{teal}C_AC_C} (\Omega_{DA}-\nu_1\Omega_{PA})]
+\nn\\
+\frac{\partial {\color{teal}\hat{c}_k}}{\partial t} 
+&=& -W({\color{teal}\phi}) \frac{\partial {\color{teal}\hat{c}_k}}{\partial x}
++\frac{1}{\color{teal}\phi} \frac{\partial}{\partial x} 
+\left( {\color{teal}\phi} d_k \frac{\partial {\color{teal}\hat{c}_k}}{\partial x} \right)
++Da \frac{1-{\color{teal}\phi}}{{\color{teal}\phi}}(\delta-{\color{teal}\hat{c}_k})
+[{\color{teal}C_A}(\Omega_{DA}-\nu_1\Omega_{PA})-\lambda 
+{\color{teal}C_C} (\Omega_{PC}-\nu_2 \Omega_{DC})  ]
+\nn\\ 
+\frac{\partial {\color{teal}\phi}}{\partial t} 
+&=& -\frac{\partial}{\partial x} (W {\color{teal}\phi})
++d_{\phi} \frac{\partial^2 {\color{teal}\phi}}{\partial x^2} + Da (1-{\color{teal}\phi})
+[{\color{teal}C_A}(\Omega_{DA}-\nu_1 \Omega_{PA})-\lambda 
+{\color{teal}C_C} (\Omega_{PC}-\nu_2 \Omega_{DC})] \nn
+\end{eqnarray}
+$k=1$ corresponds to $\hat{c}_{CA}$, and
+and $k=2$ corresponds to $\hat{c}_{C03}$.
+
+We assume that the coordinate $x=0$ corresponds to the top of the domain
+which is of length $L$. 
+
+The PDEs above are actually dimensionless (the primes have been dropped), with 
+\[
+x'=x/X^\star, \quad t'=t/T^\star \quad \hat{c}_k'=\hat{c}_k/\sqrt{K_C},
+\quad U=u/S, \quad W=w/S.
+\]
+and with 
+\[
+Da=k_2 T^\star = \frac{k_2 D_{Ca}^0}{S^2},
+\quad
+\lambda=k_3/k_2,
+\quad
+\nu_1=k_1/k_2,
+\quad
+\nu_2=k_4/k_3,
+\quad
+d_k=D_k/D_{Ca}^0, 
+\quad
+d_\phi=D_\phi/D_{Ca}^0,
+\quad
+\delta=\frac{\rho_s}{\mu_A \sqrt{K_C}}.
+\]
+Da can be interpreted as a Damköhler number\footnote{\url{https://en.wikipedia.org/wiki/Damkohler_numbers}}. 
+
+
+%......................................
+\subsubsection*{Hydraulic conductivity}
+
+\[
+K(\phi)
+=\beta \frac{\phi^3}{(1-\phi)^2} F(\phi)
+=\beta \frac{\phi^3}{(1-\phi)^2} \left[ 1-\exp\left( -\frac{10(1-\phi)}{\phi} \right) \right] 
+\]
+which translated into the following code snippet:
+\begin{lstlisting}
+def K(self,phi):
+    return self.beta*(phi**3/(1-phi)**2)*(1-np.exp(-10*(1-phi)/phi))
+\end{lstlisting}
+
+Since the porosity $\phi$ is between 0 and 1 and $K(\phi)$ contains terms which 
+could become infinite within this range, we could ask ourselves:
+\[
+\lim_{\phi\rightarrow 0} K(\phi) = ?
+\qquad
+\lim_{\phi\rightarrow 1} K(\phi) = ?
+\]
+Let us recall the Taylor expansion of the exponential function in zero:
+\[
+\exp (x) \simeq 1 + x + \frac{x^2}{2} + \frac{x^3}{6} + \dots
+\]
+When $\phi \rightarrow 1$, then $(1-\phi)/\phi \rightarrow 0$ and then 
+\[
+1-\exp\left( -\frac{10(1-\phi)}{\phi} \right) \sim 1- (1 -\frac{10(1-\phi)}{\phi} ) = \frac{10(1-\phi)}{\phi}
+\]
+so that 
+\[
+\lim_{\phi\rightarrow 1} K(\phi) = \beta \frac{\phi^3}{(1-\phi)^2} \cdot \frac{10(1-\phi)}{\phi}
+=10 \beta \frac{\phi^2}{1-\phi}
+\]
+which is Eq.~(16) of the paper.
+
+Also, since When $\phi \rightarrow 0$, then $(1-\phi)/\phi \rightarrow +\infty$ and then
+\[
+1-\exp\left( -\frac{10(1-\phi)}{\phi} \right) \sim 1 - \exp -\infty = 1 
+\]
+and finally
+\[
+\lim_{\phi\rightarrow 0} K(\phi) = 0
+\]
+
+%............................
+\subsubsection*{Velocities}
+
+W is the velocity of the pore water
+
+The velocities $U$ and $W$ are given by 
+\begin{eqnarray}
+U(\phi)&=& 1-\frac{K(\phi^0)}{S}(1-\phi^0)(\frac{\rho_s^0}{\rho_w}-1) 
++\frac{K(\phi)}{S}(1-\phi) (1-\phi^0)(\frac{\rho_s}{\rho_w}-1)    \\
+W(\phi)&=& 1-\frac{K(\phi^0)}{S}(1-\phi^0)(\frac{\rho_s^0}{\rho_w}-1) 
+-\frac{K(\phi)}{S} \frac{(1-\phi)^2}{\phi} (1-\phi^0)(\frac{\rho_s}{\rho_w}-1)   
+\end{eqnarray}
+
+These translate into
+\begin{lstlisting}
+def U(self, phi):
+    u = 1 - ( 1 / self.sed_rate )*\
+            ( self.K(self.phi_0) * ( 1 - self.phi_0 ) - self.K(phi) * ( 1 - phi ) )*\
+            ( self.rho_s0 / self.rho_w - 1 )
+    return u
+
+def W(self,phi):
+    w = 1-( 1 / self.sed_rate )*\
+          ( self.K(self.phi_0) * ( 1 - self.phi_0 ) + self.K(phi)*(1-phi)**2/phi)*\
+          ( self.rho_s0 / self.rho_w - 1 )
+    return w
+\end{lstlisting}
+
+The $U$ velocity contains the term $K(\phi)(1-\phi)$
+and the $W$ contains the term $K(\phi)(1-\phi)^2/\phi$.
+We find
+\begin{eqnarray}
+\lim_{\phi\rightarrow 0} K(\phi)(1-\phi) &=& 0 \nn\\
+\lim_{\phi\rightarrow 1} K(\phi)(1-\phi) &=& 10 \beta \frac{\phi^2}{1-\phi}(1-\phi) = 10 \beta\nn\\
+\lim_{\phi\rightarrow 0} K(\phi)(1-\phi)^2/\phi 
+&=& \beta  \frac{\phi^3}{(1-\phi)^2} (1-\phi)^2/\phi = \beta \phi^2 = 0 \nn\\
+\lim_{\phi\rightarrow 1} K(\phi)(1-\phi)^2/\phi &=& 10 \beta \frac{\phi^2}{1-\phi} (1-\phi)^2/\phi = 0 \nn
+\end{eqnarray}
+
+%..............................................
+\subsubsection*{Porosity diffusion coefficient}
+
+$d_\phi$ is the dimensionless form, calculated as $d_\phi=D_\phi/D^0_{Ca}$.
+In the article and in our calculations, it is set to be constant.
+
+\begin{lstlisting}
+self.d_phi = self.beta*(self.phi_init**3 / ( 1 - self.phi_init ) )*\ 
+             (1 / ( self.b*self.g*self.rho_w*( self.phi_NR - self.phi_inf ) ) )*\ 
+             (1 - np.exp( -10*( 1 - self.phi_init ) / self.phi_init) )*( 1 / self.D_Ca_0 )
+\end{lstlisting}
+
+%..............................................
+\subsubsection*{$k$ components diffusion coefficient}
+
+$D_k(\phi)$ the (tortuosity-corrected) diffusion
+coefficient of component $k$.
+In Eq.~6 of the paper we find 
+\[
+D_k = \frac{D_k^0}{1- \log \phi^2}
+\]
+where $D_k^0$ is the diffusion of component $k$ in seawater.
+
+\begin{lstlisting}
+def d_c_ca(self, phi):
+        # scaled with D_Ca_0
+        return 1.0/( 1 - 2*np.log(phi) )
+
+def d_c_co(self, phi):
+        # scaled with D_Ca_0
+        return self.D_CO/self.D_Ca_0*(1 / ( 1 - 2*np.log(phi) ) )
+\end{lstlisting}
+
+
+
+
+%....................................
+\subsubsection*{Saturation factors}
+
+$\Omega_{PA}$ and $\Omega_{DA}$ are saturation factors for precipitation 
+and dissolution of aragonite. 
+$\Omega_{PC}$ and $\Omega_{DC}$ are saturation factors for precipitation 
+and dissolution of calcite.
+
+The under- and oversaturation factors 
+
+\[
+\Omega_{PA}=\left( \frac{\hat{c}_{CA} \hat{c}_{CO3} K_C}{K_A} -1 \right)^{m'}
+\]
+where $m'$ is a reaction order (different from $m$ in general).
+It is understood that this reaction is only effective when the
+system is oversaturated, i.e. $\hat{c}_{CA} \hat{c}_{CO3} K_C/K_A -1 >0$.
+
+\[
+\Omega_{DA}= \left(1-\frac{\hat{c}_{CA} \hat{c}_{CO3} K_C}{K_A}  \right)^m \theta(x)
+\]
+where $K_A$ is the solubility of aragonite and $m$ is a reaction
+order. It is understood that this reaction occurs only when
+the system is undersaturated,
+i.e. $1-\hat{c}_{CA} \hat{c}_{CO3}/K_A >0$.
+Finally,
+the factor $\theta(x)$ is a characteristic function that is zero when
+$x$ is outside the aragonite dissolution zone (ADZ) and one
+otherwise. The ADZ is characterized by the position of its top
+edge $x_d$ and its thickness $h_d$.
+
+Note that there is a confusion about $m$ and $m'$
+in eqs 27 and 45 of the paper, but in practice we set $m=m'$.
+
+Looking at the PDEs we find that $\Omega_{DA}$ and $\Omega_{PA}$
+always occur together so we define
+\[
+\Omega_A=\Omega_{DA}-\nu_1\Omega_{PA} 
+\]
+Likewise we define
+\[
+\Omega_C=\Omega_{PC}-\nu_2\Omega_{DC}
+\]
+leading to write
+
+\begin{lstlisting}
+def Omega_A(self, c_ca, c_co, x):
+    sp = c_ca*c_co*self.K_C/self.K_A - 1
+    Omega_PA = (max(0.0,sp))**self.m
+    sa = 1 - c_ca*c_co*self.K_C/self.K_A
+    Omega_DA = (max(0.0,sa))**self.m * heaviside(x,self.ADZ_bot,self.ADZ_top,self.x_scale)
+    return Omega_DA - self.nu1*Omega_PA
+
+def Omega_C(self, c_ca, c_co):
+    sp = c_ca*c_co - 1
+    Omega_PC = (max(0.0,sp))**self.n
+    sa = 1 - c_ca*c_co
+    Omega_DC = (max(0.0, sa))**self.n
+    return Omega_PC - self.nu2*Omega_DC
+\end{lstlisting}
+
+%----------------------------------------------------------------------
+\subsection*{Numerical methods}
+
+we solve the coupled PDEs by the Method of Lines, i.e.
+we will discretise the right hand sides of the equations by means of the Finite 
+Difference Method but will keep the time derivative as they are and we will 
+use an Initial Value Problem integrator, e.g. Runge-Kutta methods.
+
+We have implemented two methods: a simple 1st order Euler method (with a 
+user-chosen constant timestep $dt$), and 
+the use of the {\python solve\_ivp} from {\python scipy} %(see \stone~156,157). 
+The code has been designed with modularity in mind so that many functions 
+have been created, each carrying out a single task.
+
+Because sharp transitions and discontinuities are very often source of error
+in numerical modelling we have replaced the Heaviside function $\theta(x)$
+by a smoothed version (the value of 500 controls the smoothness):
+
+\begin{lstlisting}
+def heaviside(x,xbot,xtop,xscale):
+    val=0.5*(1+np.tanh((x-xtop/xscale)*500)) *0.5*(1+np.tanh((xbot/xscale-x)*500))
+    return val 
+\end{lstlisting}
+
+DESCRIBE CLASS and JIT (CHARLOTTE)
+
+\begin{eqnarray}
+\frac{\partial C_A}{\partial t} &=& -U \frac{\partial C_A}{\partial x}  + {\cal R}_{\text Aragonite}
+\nn\\
+\frac{\partial C_C}{\partial t} &=& -U \frac{\partial C_C}{\partial x}  + {\cal R}_{\text Calcite} 
+\nn\\
+\frac{\partial \hat{c}_k}{\partial t} &=& -W \frac{\partial \hat{c}_k}{\partial x}
++\frac{1}{\phi} \frac{\partial}{\partial x} \left( \phi d_k \frac{\partial \hat{c}_k}{\partial x} \right)
++{\cal R}_{k}
+\nn\\ 
+\frac{\partial \phi}{\partial t} &=& -\frac{\partial}{\partial x} (W \phi) +{\cal R}_\phi
+\end{eqnarray}
+
+The ${\cal R}$ rhs terms are implemented via five functions:
+\begin{lstlisting}
+#Aragonite
+def R_AR(self, AR, CA, c_ca, c_co, x):
+    return - self.Da*( ( 1 - AR ) * AR * self.Omega_A(c_ca, c_co, x) +\
+                        self.lamb * AR * CA * self.Omega_C(c_ca, c_co) )
+
+#Calcite
+def R_CA(self, AR, CA, c_ca, c_co, x):
+    return self.Da*( self.lamb * ( 1 - CA ) * CA * self.Omega_C(c_ca, c_co) +\
+                        AR * CA * self.Omega_A(c_ca, c_co, x) )
+
+# Ca ions
+def R_c_ca(self, AR, CA, c_ca, c_co, phi, x):
+    return self.Da*( ( 1 - phi ) / phi ) * (self.delta - c_ca)*\
+               ( AR * self.Omega_A(c_ca, c_co, x) - self.lamb * CA * self.Omega_C(c_ca, c_co) )
+
+# CO3 ions
+def R_c_co(self, AR, CA, c_ca, c_co, phi, x):
+    return self.Da*( ( 1 - phi ) / phi ) * (self.delta - c_co)*\
+               ( AR * self.Omega_A(c_ca, c_co, x) - self.lamb * CA * self.Omega_C(c_ca, c_co) )
+
+# porosity
+def R_phi(self, AR, CA, c_ca, c_co, phi, x):
+    return self.Da*( 1 - phi )*\
+               ( AR * self.Omega_A(c_ca, c_co, x) - self.lamb * CA * self.Omega_C(c_ca, c_co) )
+\end{lstlisting}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+describe structure of X array, 5*nnx long
+
+
+%----------------------------------------------------------------------
+\subsection*{Initial values}
+
+The initial conditions are chosen as spatially homogeneous constants:
+\begin{eqnarray}
+C_A(x,0)&=&C_{A,init} \\
+C_C(x,0)&=&C_{C,init} \\
+\hat{c}_k(x,0)&=&\hat{c}_{k,init} \\
+\phi(x,0) &=& \phi_{init}
+\end{eqnarray}
+for $x\ne 0$. This is Eq.~36 in the paper.
+
+%----------------------------------------------------------------------
+\subsection*{Boundary conditions}
+
+At $x=0$ (top of the domain):
+\begin{eqnarray}
+C_A(0,t)&=&C_{A}^0 \\
+C_C(0,t)&=&C_{C}^0 \\
+\hat{c}_k(0,t)&=&\hat{c}_{k}^0 \\
+\phi(0,t) &=& \phi^0
+\end{eqnarray}
+At $x=L$ (bottom of the domain):
+\[
+\frac{\partial \hat{c}_k (x,t)}{\partial x}|_L = 0
+\]
+\[
+\frac{\partial \phi (x,t)}{\partial x}|_L = 0
+\]
+
+we need boundary conditions there because of the second-order 
+derivative in these equations (diffusion term).
+
+
+%----------------------------------
+\subsubsection*{1st PDE}
+
+\[
+\frac{\partial {\color{teal} C_A}}{\partial t} 
+= -U({\color{teal}\phi}) \frac{\partial {\color{teal}C_A}}{\partial x} 
+- Da[(1-{\color{teal}C_A}){\color{teal}C_A}(\Omega_{DA}-\nu_1\Omega_{PA})+
+\lambda {\color{teal}C_AC_C} (\Omega_{PC}-\nu_2\Omega_{DC})]
+\]
+Turning to the Aragonite PDE, we must now produce a FD approximation of the advection term.
+For all the nodes inside the domain, use use a centered approximation:
+\[
+-U \frac{\partial C_A}{\partial x} \rightarrow -U_i \frac{C_A|_{i+1} -C_A|_{i-1}}{2h}
+\]
+For the node at the top (i.e. $i=0$), we are prescribing the value of $C_A$, i.e.
+the derivative is then zero so then 
+\[
+-U \frac{\partial C_A}{\partial x} \rightarrow 0 
+\]
+For the node at the bottom, no boundary condition is imposed so we use a backward
+approximation:
+\[
+-U \frac{\partial C_A}{\partial x} \rightarrow -U_i \frac{C_A|_{i} -C_A|_{i-1}}{h}
+\]
+ 
+\begin{lstlisting}
+def RHS_AR(self, AR, CA, c_ca, c_co, phi, x, h):
+    dAR_dt = np.zeros(len(x))
+    u = self.U(phi)
+    for i in range(0,len(x)):
+        # x = 0 BC, Dirichlet
+        if (i==0):
+            dAR_dt[i]= 0
+        # x = Lx, no prescribed BC
+        elif (i==len(x)-1):
+            dAR_dt[i]= -u[i]*(AR[i]-AR[i-1])/h + self.R_AR(AR[i],CA[i],c_ca[i],c_co[i],x[i])
+        else:
+            dAR_dt[i]= -u[i]*(AR[i+1]-AR[i-1])/(2*h) + self.R_AR(AR[i],CA[i],c_ca[i],c_co[i], x[i])    
+    return dAR_dt
+\end{lstlisting}
+
+%----------------------------------
+\subsubsection*{2nd PDE}
+\[
+\frac{\partial {\color{teal}C_C}}{\partial t} 
+= -U({\color{teal}\phi}) \frac{\partial {\color{teal}C_C}}{\partial x}  
++ Da[(1-{\color{teal}C_C}){\color{teal}C_C}(\Omega_{PC}-\nu_2\Omega_{DC})+
+\lambda {\color{teal}C_AC_C} (\Omega_{DA}-\nu_1\Omega_{PA})]
+\]
+
+The structure of the 2nd PDE is identical to the first one so we adopt the same approch.
+\begin{lstlisting}
+def RHS_CA(self, AR, CA, c_ca, c_co, phi, x, h):
+    dCA_dt = np.zeros(len(x))
+    u = self.U(phi)
+    for i in range(0,len(x)):
+        # x = 0 BC, Dirichlet
+        if (i==0):
+            dCA_dt[i]= 0
+        # x = Lx, no prescribed BC
+        elif (i==len(x)-1):
+            dCA_dt[i]= -u[i]*( CA[i]-CA[i-1] ) / h + self.R_CA(AR[i], CA[i], c_ca[i], c_co[i], x[i])
+        else:
+            dCA_dt[i]= -u[i]*( CA[i+1]-CA[i-1])/(2*h)+self.R_CA(AR[i],CA[i],c_ca[i],c_co[i],x[i])
+    return dCA_dt
+\end{lstlisting}
+
+%----------------------------------
+\subsubsection*{3rd PDE}
+
+\[
+\frac{\partial {\color{teal}\hat{c}_k}}{\partial t} 
+= -W({\color{teal}\phi}) \frac{\partial {\color{teal}\hat{c}_k}}{\partial x}
++\frac{1}{\color{teal}\phi} \frac{\partial}{\partial x} 
+\left( {\color{teal}\phi} d_k \frac{\partial {\color{teal}\hat{c}_k}}{\partial x} \right)
++Da \frac{1-{\color{teal}\phi}}{{\color{teal}\phi}}(\delta-{\color{teal}\hat{c}_k})
+[{\color{teal}C_A}(\Omega_{DA}-\nu_1\Omega_{PA})-\lambda 
+{\color{teal}C_C} (\Omega_{PC}-\nu_2 \Omega_{DC})  ]
+\]
+The advection term is treated in the same way as above, but we here have to discretise 
+a diffusion term with a non constant diffusion coefficient.
+The standard procedure in such cases is as follows:
+\[
+a
+\] 
+
+
+
+\end{document}
