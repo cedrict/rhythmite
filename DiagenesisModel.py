@@ -424,7 +424,7 @@ method = 'RK23'      # choice of method for time integration
                       # options currently: 'Euler','RK23','RK45','DOP853'
                       
 print_freq = 100      # frequency of print statements in Euler mode
-output_freq = 1         # frequency of soln storage
+output_freq = 10      # frequency of soln storage
 
 t_eval = t_arr[::output_freq] # times at which to store the solution, for ivp routines
 
@@ -541,7 +541,7 @@ print('time elapsed=',  end-start)
 
 ##### save results to vtu, ascii format
 
-#export_to_vtu2(len(t_arr), x, soln, vel_U, vel_W, lh.ADZ_bot, lh.ADZ_top, lh.x_scale, delta_t)
+export_to_vtu2(len(t_eval), x, soln, vel_U, vel_W, lh.ADZ_bot, lh.ADZ_top, lh.x_scale, delta_t)
 
 # Take time series at fixed depth
 depths = [int(nnx/4), int(nnx/2), int(3*nnx/4),  nnx-1]
