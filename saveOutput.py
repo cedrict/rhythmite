@@ -150,14 +150,14 @@ def export_to_vtu2(nstep,coords,soln,vel_U,vel_W,xbot,xtop,xscale,dt):
     # AR, CA, ca, co, phi, u ,W
 
     m=4
-    nnx=nstep
+    nnx=int(nstep/100)
     nny=len(coords)
     nelx=nnx-1
     nely=nny-1
     N=nnx*nny
     nel=nelx*nely
     Ly=max(coords)
-    Lx=Ly*2
+    Lx=Ly*2.5
     h = Ly/(nny-1) #???
 
     x = np.empty(N,dtype=np.float64)
@@ -198,7 +198,7 @@ def export_to_vtu2(nstep,coords,soln,vel_U,vel_W,xbot,xtop,xscale,dt):
     counter = 0
     for j in range(0, nny):
         for i in range(0, nnx):
-            vtufile.write("%10f \n" % soln[nny-1-j,i])
+            vtufile.write("%10f \n" % soln[nny-1-j,i*100])
             counter += 1
     vtufile.write("</DataArray>\n")
     #--
@@ -206,7 +206,15 @@ def export_to_vtu2(nstep,coords,soln,vel_U,vel_W,xbot,xtop,xscale,dt):
     counter = 0
     for j in range(0, nny):
         for i in range(0, nnx):
-            vtufile.write("%10f \n" % soln[nny+nny-1-j,i])
+            vtufile.write("%10f \n" % soln[nny+nny-1-j,i*100])
+            counter += 1
+    vtufile.write("</DataArray>\n")
+    #--
+    vtufile.write("<DataArray type='Float32' Name='AR+CA' Format='ascii'> \n")
+    counter = 0
+    for j in range(0, nny):
+        for i in range(0, nnx):
+            vtufile.write("%10f \n" % (soln[nny-1-j,i*100]+soln[nny+nny-1-j,i*100]))
             counter += 1
     vtufile.write("</DataArray>\n")
     #--
@@ -214,7 +222,7 @@ def export_to_vtu2(nstep,coords,soln,vel_U,vel_W,xbot,xtop,xscale,dt):
     counter = 0
     for j in range(0, nny):
         for i in range(0, nnx):
-            vtufile.write("%10f \n" % soln[2*nny+nny-1-j,i])
+            vtufile.write("%10f \n" % soln[2*nny+nny-1-j,i*100])
             counter += 1
     vtufile.write("</DataArray>\n")
     #--
@@ -222,7 +230,7 @@ def export_to_vtu2(nstep,coords,soln,vel_U,vel_W,xbot,xtop,xscale,dt):
     counter = 0
     for j in range(0, nny):
         for i in range(0, nnx):
-            vtufile.write("%10f \n" % soln[3*nny+nny-1-j,i])
+            vtufile.write("%10f \n" % soln[3*nny+nny-1-j,i*100])
             counter += 1
     vtufile.write("</DataArray>\n")
     #--
@@ -230,7 +238,7 @@ def export_to_vtu2(nstep,coords,soln,vel_U,vel_W,xbot,xtop,xscale,dt):
     counter = 0
     for j in range(0, nny):
         for i in range(0, nnx):
-            vtufile.write("%10f \n" % soln[4*nny+nny-1-j,i])
+            vtufile.write("%10f \n" % soln[4*nny+nny-1-j,i*100])
             counter += 1
     vtufile.write("</DataArray>\n")
     #--
@@ -238,16 +246,15 @@ def export_to_vtu2(nstep,coords,soln,vel_U,vel_W,xbot,xtop,xscale,dt):
     counter = 0
     for j in range(0, nny):
         for i in range(0, nnx):
-            vtufile.write("%8f \n" %vel_U[nny-1-j,i])
+            vtufile.write("%8f \n" %vel_U[nny-1-j,i*100])
             counter += 1
     vtufile.write("</DataArray>\n")
-
     #--
     vtufile.write("<DataArray type='Float32' Name='CFL nb (u)' Format='ascii'> \n")
     counter = 0
     for j in range(0, nny):
         for i in range(0, nnx):
-            vtufile.write("%8f \n" % (dt*vel_U[nny-1-j,i]/h))
+            vtufile.write("%9f \n" % (dt*vel_U[nny-1-j,i*100]/h))
             counter += 1
     vtufile.write("</DataArray>\n")
     #--
@@ -255,7 +262,7 @@ def export_to_vtu2(nstep,coords,soln,vel_U,vel_W,xbot,xtop,xscale,dt):
     counter = 0
     for j in range(0, nny):
         for i in range(0, nnx):
-            vtufile.write("%8f \n" %vel_W[nny-1-j,i])
+            vtufile.write("%8f \n" %vel_W[nny-1-j,i*100])
             counter += 1
     vtufile.write("</DataArray>\n")
     #--
@@ -263,7 +270,7 @@ def export_to_vtu2(nstep,coords,soln,vel_U,vel_W,xbot,xtop,xscale,dt):
     counter = 0
     for j in range(0, nny):
         for i in range(0, nnx):
-            vtufile.write("%8f \n" % (dt*vel_W[nny-1-j,i]/h))
+            vtufile.write("%9f \n" % (dt*vel_W[nny-1-j,i*100]/h))
             counter += 1
     vtufile.write("</DataArray>\n")
     #--
