@@ -379,7 +379,7 @@ t0 = 0.0
 tf = 250/lh.t_scale # sim time in a, scaled to dimensionless form 
 
 # set the timestep manually ONLY used in Euler mode
-delta_t = 0.001/lh.t_scale #1.319e-2*1/lh.t_scale   # timestep in a, 1.13e-2/tsc = 10^-6 in scaled time
+delta_t = 0.001/lh.t_scale   # timestep in a, 1.13e-2/tsc = 10^-6 in scaled time
 t_arr = np.arange(t0, tf, delta_t)
 
 # labels corresponding the the soln variables, for print statements

@@ -28,14 +28,14 @@ def plotSpatial(df, filename, benchmarkComp):
     '''
     
     Xs = 131.9/0.1 # depth scaling constant
-    x = df.x*Xs
+    x = np.array(df.x*Xs)
     
     fig = plt.figure(figsize=(12,10))
-    plt.plot(x,df.AR,label='AR')
-    plt.plot(x,df.CA,label='CA')
-    plt.plot(x,df.phi,label='phi')
-    plt.plot(x,df.ca,label='Ca')
-    plt.plot(x,df.co,label='CO')
+    plt.plot(x,np.array(df.AR),label='AR')
+    plt.plot(x,np.array(df.CA),label='CA')
+    plt.plot(x,np.array(df.phi),label='phi')
+    plt.plot(x,np.array(df.ca),label='Ca')
+    plt.plot(x,np.array(df.co),label='CO')
     
     plotHeaviside(x/Xs)
     
@@ -70,14 +70,14 @@ def plotTemporal(df, filename):
 
       '''
       Ts = 131.9/0.1**2 # time scaling constant
-      t_plot = df.x*Ts/1000
+      t_plot = np.array(df.x*Ts/1000)
       
       fig = plt.figure(figsize=(12,10))
-      plt.plot(t_plot, df.AR, label=df.columns[1])
-      plt.plot(t_plot, df.CA, label=df.columns[2])
-      plt.plot(t_plot, df.phi, label=df.columns[5])
-      plt.plot(t_plot, df.ca, label=df.columns[3])
-      plt.plot(t_plot, df.co, label=df.columns[4])
+      plt.plot(t_plot, np.array(df.AR), label=df.columns[1])
+      plt.plot(t_plot, np.array(df.CA), label=df.columns[2])
+      plt.plot(t_plot, np.array(df.phi), label=df.columns[5])
+      plt.plot(t_plot, np.array(df.ca), label=df.columns[3])
+      plt.plot(t_plot, np.array(df.co), label=df.columns[4])
       plt.legend()
       plt.xlim(0,np.array(t_plot)[-1])
       plt.ylim(0,2.3)
@@ -98,11 +98,11 @@ def plotFig3e():
     colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
     
     bm = pd.read_csv('fig3e.csv')
-    plt.scatter(bm.ARX, bm.ARY, label='bm_AR',marker='x',color=colors[0])
-    plt.scatter(bm.CAX, bm.CAY, label='bm_CA',marker='x',color=colors[1])
-    plt.scatter(bm.PoX, bm.PoY, label='bm_phi',marker='x',color=colors[2])
-    plt.scatter(bm.CaX, bm.CaY, label='bm_ca',marker='x',color=colors[3])
-    plt.scatter(bm.CoX, bm.CoY, label='bm_co',marker='x',color=colors[4])
+    plt.scatter(np.array(bm.ARX), np.array(bm.ARY), label='bm_AR',marker='x',color=colors[0])
+    plt.scatter(np.array(bm.CAX), np.array(bm.CAY), label='bm_CA',marker='x',color=colors[1])
+    plt.scatter(np.array(bm.PoX), np.array(bm.PoY), label='bm_phi',marker='x',color=colors[2])
+    plt.scatter(np.array(bm.CaX), np.array(bm.CaY), label='bm_ca',marker='x',color=colors[3])
+    plt.scatter(np.array(bm.CoX), np.array(bm.CoY), label='bm_co',marker='x',color=colors[4])
 
 
 def plotHeaviside(x):
