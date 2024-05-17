@@ -318,7 +318,41 @@ def heaviside(x,xbot,xtop,xscale):
     return val 
 \end{lstlisting}
 
-DESCRIBE CLASS and JIT (CHARLOTTE)
+As the equations require many constant parameters, we created a class to contain all the functions and parameter variables.  This way the functions need only take the solution variables and the `self' keyword as arguments, rather than passing lengthy lists of parameters to each function.  Parameter variables are set in the constructor function `\_\_init\_\_(self)' then accessed within the function using `self.var\_name'.  We also applied jit (just in time) compiling to the entire class, using the Numba package \footnote{\url{https://numba.readthedocs.io/en/stable/}}.  This produces compiled binaries for python functions at the first time they are encountered in the run and then reuses these binaries for all subsequent function calls, resulting in dramatically improved performance.  For this code, speed-up varies between a factor of roughly 3-10, depending on the mode the code runs in.  The addition of jit to the class is relatively simple, the main addition is that the type of all parameter values must be explicitly specified and passed to the jit decorator as a list of 2-element tuples specifying the variable name and its type:
+\begin{lstlisting}
+from numba.experimental import jitclass
+
+# for the jit-compiling, we need to specify the type of all parameters in the class
+spec = [
+    ('g', float64),
+    ('K_C', float64),
+    ('K_A', float64),
+    ('ADZ_bot', float64),
+    ('ADZ_top', float64),
+    .
+    ..
+    ...
+    ]
+# This class contains the functions and parameters that are used to calculate
+# the RHS of eqns 40-43 of L'Heureux (2018)
+@jitclass(spec)
+class LHeureux:
+    
+    # define all params as instance vars
+    # this way we can easily modify them at the instance level
+    # i.e. for parameter searches
+    def __init__(self):
+        # physical constants
+        self.g = 9.81*100           # gravitational acceleration (cm/s^2)
+        # model parameters
+        self.K_C = 10**-6.37        # Calcite solubility (M^2)
+        self.K_A = 10**-6.19        # Aragonite solubility (M^2)
+        self.ADZ_top = 50           # top of the Aragonite dissolution zone (cm)
+        self.ADZ_bot = 150
+        .
+        ..
+        ...
+\end{lstlisting}
 
 \begin{eqnarray}
 \frac{\partial C_A}{\partial t} &=& -U \frac{\partial C_A}{\partial x}  + {\cal R}_{\text Aragonite}
@@ -360,23 +394,18 @@ def R_phi(self, AR, CA, c_ca, c_co, phi, x):
                ( AR * self.Omega_A(c_ca, c_co, x) - self.lamb * CA * self.Omega_C(c_ca, c_co) )
 \end{lstlisting}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-describe structure of X array, 5*nnx long
+The solution for all variables is stored in a single array, 5*nnx long, with the first nnx elements corresponding to the AR values, the next nnx giving CA and so on.  The full ordering of the variables in X is AR, CA, c\_ca, c\_co, phi.  This structure is designed for use with the ivp\_solve function, which expects a single array for the solution variable values.  ivp\_solve also expects a single function which calculates the RHS, so we also combine the RHS functions in a master function:
+\begin{lstlisting}
+def X_RHS(self, t, X, nnx, x, h):
+        
+dAR_dt   = self.RHS_AR(  X[0:nnx], X[nnx:2*nnx], X[2*nnx:3*nnx], X[3*nnx:4*nnx], X[4*nnx:5*nnx], x, h)
+dCA_dt   = self.RHS_CA(  X[0:nnx], X[nnx:2*nnx], X[2*nnx:3*nnx], X[3*nnx:4*nnx], X[4*nnx:5*nnx], x, h)
+dc_ca_dt = self.RHS_c_ca(X[0:nnx], X[nnx:2*nnx], X[2*nnx:3*nnx], X[3*nnx:4*nnx], X[4*nnx:5*nnx], x, h)
+dc_co_dt = self.RHS_c_co(X[0:nnx], X[nnx:2*nnx], X[2*nnx:3*nnx], X[3*nnx:4*nnx], X[4*nnx:5*nnx], x, h)
+dphi_dt  = self.RHS_phi( X[0:nnx], X[nnx:2*nnx], X[2*nnx:3*nnx], X[3*nnx:4*nnx], X[4*nnx:5*nnx], x, h)
+        
+return np.concatenate((dAR_dt, dCA_dt, dc_ca_dt, dc_co_dt, dphi_dt)) 
+\end{lstlisting}
 
 
 %----------------------------------------------------------------------
