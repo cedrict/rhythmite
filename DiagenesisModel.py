@@ -376,10 +376,10 @@ X_new = np.zeros([nnx*5])
 
 # time integration values
 t0 = 0.0
-tf = 250/lh.t_scale # sim time in a, scaled to dimensionless form 
+tf = 50/lh.t_scale # sim time in a, scaled to dimensionless form 
 
 # set the timestep manually ONLY used in Euler mode
-delta_t = 0.001/lh.t_scale   # timestep in a, 1.13e-2/tsc = 10^-6 in scaled time
+delta_t = 0.01/lh.t_scale   # timestep in a, 1.13e-2/tsc = 10^-6 in scaled time
 t_arr = np.arange(t0, tf, delta_t)
 
 # labels corresponding the the soln variables, for print statements
@@ -389,7 +389,14 @@ labels=['AR  ', 'CA  ', 'c_ca', 'c_co', 'phi ']
 verbose = True        # print out extra info at each step, for debugging
 method = 'Euler'      # choice of method for time integration
                       # options currently: 'Euler','RK23','RK45','DOP853'
-                      
+
+steadyCheck = True    # switch for optional steady state checking
+tol = 1e-6            # tolerance for minimum variation between steps, needs tuning to tstep?
+count_threshold = 100 # tsteps for which solution variation must remain under to trigger steady state
+steady_count = 0      # variable to track how many continous steps a steady state was present in
+ 
+
+
 print_freq = 100      # frequency of print statements in Euler mode
 output_freq = 10      # frequency of soln storage
 
@@ -411,6 +418,9 @@ if (method=='Euler'):
     vel_U = []
     vel_W = []
     
+    U_temp = np.zeros(nnx)
+    W_temp = np.zeros(nnx)
+    
     start = time.time()
     for i in range(0,len(t_arr)):
         
@@ -427,6 +437,9 @@ if (method=='Euler'):
         
         # calculate the new X using forward Euler
         X_new = X + delta_t*dX_dt
+        
+        U_temp = lh.U(X_new[4*nnx:5*nnx])
+        W_temp = lh.W(X_new[4*nnx:5*nnx])
         
         # check for negative concentrations
         if (i%print_freq==0):
@@ -445,10 +458,10 @@ if (method=='Euler'):
             else:
                 X_new[j*nnx:(j+1)*nnx] = np.clip(X_new[j*nnx:(j+1)*nnx], 0.0, 1.0e5)
 
-        velstats_file.write("%d %6e %6e %6e %6e \n" % (i,np.min(lh.U(X_new[4*nnx:5*nnx])),\
-                                                         np.max(lh.U(X_new[4*nnx:5*nnx])),\
-                                                         np.min(lh.W(X_new[4*nnx:5*nnx])),\
-                                                         np.max(lh.W(X_new[4*nnx:5*nnx]))))
+        velstats_file.write("%d %6e %6e %6e %6e \n" % (i,np.min(U_temp),\
+                                                         np.max(U_temp),\
+                                                         np.min(W_temp),\
+                                                         np.max(W_temp)))
         velstats_file.flush()
 
         stats_file.write("%d %e %e %e %e %e %e %e %e %e %e\n" %\
@@ -470,20 +483,52 @@ if (method=='Euler'):
                # maximum and min soln values
                print('%s (m,M) = %.3f , %.3f' %(labels[j],np.min(X_new[j*nnx:(j+1)*nnx]),\
                                                           np.max(X_new[j*nnx:(j+1)*nnx])))
-           print('U    (m,M) = %.3f , %.3f' %(np.min(lh.U(X_new[4*nnx:5*nnx])),\
-                                              np.max(lh.U(X_new[4*nnx:5*nnx]))))
-           print('W    (m,M) = %.3f , %.3f' %(np.min(lh.W(X_new[4*nnx:5*nnx])),\
-                                              np.max(lh.W(X_new[4*nnx:5*nnx]))))
+           print('U    (m,M) = %.3f , %.3f' %(np.min(U_temp),\
+                                              np.max(U_temp)))
+           print('W    (m,M) = %.3f , %.3f' %(np.min(W_temp),\
+                                              np.max(W_temp)))
             
         if (i%output_freq==0):
-            vel_U.append(lh.U(X_new[4*nnx:5*nnx]))            
-            vel_W.append(lh.W(X_new[4*nnx:5*nnx]))            
+            vel_U.append(U_temp)            
+            vel_W.append(W_temp)            
         
         # check for nans, exit if we see them
         isnan = np.isnan(X_new)
         if (np.any(isnan)):
             print('nan encountered, exiting')
+            
+            # need to make sure t_eval matches soln for output
+            t_eval = t_eval[:len(soln)]
+            
             break
+        
+        # steady state detection
+        
+        if (steadyCheck):
+            # check to see if we have a steady state
+            
+            
+            # maybe we want this to check for a couple of timesteps in a row ???
+            X_diff = np.absolute(X_new - X)
+            
+            if (np.max(X_diff) <= tol):
+                # all values are below tolerance this step
+                steady_count += 1
+            else:
+                # not under the threshold, reset counter
+                steady_count = 0
+            
+            
+            if (steady_count >= count_threshold):
+                # we've reached conditions for steady state
+                # exit
+                print('Steady state detected!')
+                
+                # need to make sure t_eval matches soln for output
+                t_eval = t_eval[:len(soln)]
+                
+                break
+            
             
         # move the new values into X
         X = np.copy(X_new)
