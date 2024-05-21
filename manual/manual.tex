@@ -22,7 +22,20 @@
 }
 
 
+\usepackage[
+backend=biber,
+style=alphabetic,
+sorting=ynt
+]{biblatex}
+
+\addbibresource{manual.bib}
+
+\title{Diagenetic Self-Organization: an exercise in replication}
+\author{C. Summers \& C. Thieulot}
+
+
 \begin{document}
+\maketitle
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -79,7 +92,7 @@ five unknowns throughout):
 {\color{teal}C_C} (\Omega_{PC}-\nu_2 \Omega_{DC})  ]
 \nn\\ 
 \frac{\partial {\color{teal}\phi}}{\partial t} 
-&=& -\frac{\partial}{\partial x} (W {\color{teal}\phi})
+&=& -\frac{\partial}{\partial x} (W({\color{teal}\phi}) {\color{teal}\phi})
 +d_{\phi} \frac{\partial^2 {\color{teal}\phi}}{\partial x^2} + Da (1-{\color{teal}\phi})
 [{\color{teal}C_A}(\Omega_{DA}-\nu_1 \Omega_{PA})-\lambda 
 {\color{teal}C_C} (\Omega_{PC}-\nu_2 \Omega_{DC})] \nn
@@ -202,7 +215,7 @@ We find
 \subsubsection*{Porosity diffusion coefficient}
 
 $d_\phi$ is the dimensionless form, calculated as $d_\phi=D_\phi/D^0_{Ca}$.
-In the article and in our calculations, it is set to be constant.
+In the article and in our calculations, it is set to be constant given by:
 
 \begin{lstlisting}
 self.d_phi = self.beta*(self.phi_init**3 / ( 1 - self.phi_init ) )*\ 
@@ -423,6 +436,9 @@ for $x\ne 0$. This is Eq.~36 in the paper.
 %----------------------------------------------------------------------
 \subsection*{Boundary conditions}
 
+In the paper we find ``At the bottom boundary $x=L$ we will assume that the system has no diffusive flux''.
+We are not too sure what to make of this, but the author provides the following:
+
 At $x=0$ (top of the domain):
 \begin{eqnarray}
 C_A(0,t)&=&C_{A}^0 \\
@@ -440,6 +456,48 @@ At $x=L$ (bottom of the domain):
 
 we need boundary conditions there because of the second-order 
 derivative in these equations (diffusion term).
+
+%----------------------------------------------------------------------
+\subsection*{Upwinding}
+
+The equations for $C_A$ and $C_C$ are pure advection equations. 
+We have observed that in the absence of any stabilisation the computed fields
+showcase over- and undershoots, which are unphysical and which also find their
+way into the rhs of the other PDEs. 
+
+We have then decided to use the 
+Fiadeiro \& Veronis method \cite{five77,wrig92}, which works as follows for the (steady state)
+advection-diffusion equation (see also p315 of \cite{boudreau}):
+\[
+\kappa \frac{T_{i+1}-2T_i + T_{i-1}}{h^2}
+- u \frac{(1-\sigma) T_{i+1}+2\sigma T_i -(1+\sigma)T_{i-1}}{2 h} = 0
+\]
+which is a blend of backward (upstream) and central differences. The amount of
+blending is dictated by the value of the parameter $\sigma$, defined as
+\[
+\sigma 
+= \text{coth} \frac{u h}{2 \kappa} - \frac{2 \kappa}{u h}
+= \text{coth} \; Pe  - \frac{1}{Pe}
+\]
+The parameter $\sigma$ has the property that
+$\sigma \rightarrow 0$ when $Pe \rightarrow 0$ and 
+$\sigma \rightarrow 1$ when $Pe \rightarrow \infty$.
+The equation above can also be rewritten:
+\[
+\kappa \frac{T_{i+1}-2T_i + T_{i-1}}{h^2}
+- u \frac{1 T_{i+1}-T_{i-1}}{2 h} 
++ \frac{u \sigma h}{2} \frac{T_{i+1}-2 T_i +T_{i-1}}{h^2} = 0
+\]
+which makes the action of this stabilisation term more obvious: it is a diffusion term whose 
+diffusion coefficient goes away when $h\rightarrow 0$. 
+
+Thus, if $\sigma = 0$ (diffusion dominated), then pure central differencing is obtained, and if
+$\sigma = 1$ (advection dominated), then pure backward differencing results. Interestingly
+enough, this blended or weighted scheme is second-order accurate even as it switches
+to backward differencing \cite{five77}. 
+When $\kappa \rightarrow 0$ (no physical diffusion at all - as is the case for $C_A$ and $C_C$)
+then $\sigma$ tends to $\pm 1$, and more precisely: $\sigma = sign(u)$, which allows for a simple 
+and elegant implementation. 
 
 
 %----------------------------------
@@ -492,7 +550,9 @@ def RHS_AR(self, AR, CA, c_ca, c_co, phi, x, h):
 \lambda {\color{teal}C_AC_C} (\Omega_{DA}-\nu_1\Omega_{PA})]
 \]
 
-The structure of the 2nd PDE is identical to the first one so we adopt the same approch.
+The structure of the 2nd PDE is identical to the first 
+one so we adopt the same approch.
+
 \begin{lstlisting}
 def RHS_CA(self, AR, CA, c_ca, c_co, phi, x, h):
     dCA_dt = np.zeros(len(x))
@@ -510,7 +570,7 @@ def RHS_CA(self, AR, CA, c_ca, c_co, phi, x, h):
 \end{lstlisting}
 
 %----------------------------------
-\subsubsection*{3rd PDE}
+\subsubsection*{3rd \& 4th PDE}
 
 \[
 \frac{\partial {\color{teal}\hat{c}_k}}{\partial t} 
@@ -525,9 +585,119 @@ The advection term is treated in the same way as above, but we here have to disc
 a diffusion term with a non constant diffusion coefficient.
 The standard procedure in such cases is as follows:
 \[
-a
+\frac{\partial }{\partial x} \left( k \frac{\partial f}{\partial x} \right)
+\simeq
+\frac{
+k_{i+1/2} \frac{f_{i+1}-f_i}{h}
+-
+k_{i-1/2} \frac{f_{i}-f_{i-1}}{h}
+}{h}
+\] 
+where $k_{i\pm 1/2}$ is evaluated between the points to maintain the 
+second order accuracy.
+
+In our case we then have (I have removed the $k$ subscript):
+\[
+\frac{\partial}{\partial x} 
+\left( {\color{teal}\phi} d 
+\frac{\partial {\color{teal}\hat{c}}}{\partial x} \right)
+\simeq 
+\frac{
+\phi_{i+1/2} d_{i+1/2} \frac{c_{i+1}-c_i}{h}
+-
+\phi_{i-1/2} d_{i-1/2} \frac{c_{i}-c_{i-1}}{h}
+}{h}
+\]
+The value of $c$ is prescribed at $x=0$ but only its derivative
+is prescribed at the bottom ($x=L$):
+\[
+\frac{\partial \hat{c} (x,t)}{\partial x}|_L = 0
+\]
+i.e.
+\[
+\frac{c_i-c_{i-1}}{h}=0  \qquad \text{for} \quad i=nnx-1
+\] 
+We then write the expression above fully backward:
+\[
+\frac{\partial}{\partial x} 
+\left( {\color{teal}\phi} d 
+\frac{\partial {\color{teal}\hat{c}}}{\partial x} \right)
+\simeq 
+\frac{
+\phi_{i-1/2} d_{i-1/2} \frac{c_{i}-c_{i-1}}{h}
+-
+\phi_{i-3/2} d_{i-3/2} \frac{c_{i-1}-c_{i-2}}{h}
+}{h}
+\]
+and we see that the b.c. kills the first term, so we are left with
+\[
+\frac{\partial}{\partial x} 
+\left( {\color{teal}\phi} d 
+\frac{\partial {\color{teal}\hat{c}}}{\partial x} \right)
+\simeq 
+\frac{-\phi_{i-3/2} d_{i-3/2} \frac{c_{i-1}-c_{i-2}}{h}}{h}
+=
+-\phi_{i-3/2} d_{i-3/2} \frac{c_{i-1}-c_{i-2}}{h^2}
+\]
+and we see that the b.c. kills the first term, so we are left with
+
+
+
+
+
+\begin{lstlisting}
+...
+\end{lstlisting}
+
+%----------------------------------
+\subsubsection*{5th PDE}
+
+
+
+
+
+
+
+
+\[
+\frac{\partial {\color{teal}\phi}}{\partial t} 
+= -\frac{\partial}{\partial x} (W {\color{teal}\phi})
++d_{\phi} \frac{\partial^2 {\color{teal}\phi}}{\partial x^2} + Da (1-{\color{teal}\phi})
+[{\color{teal}C_A}(\Omega_{DA}-\nu_1 \Omega_{PA})-\lambda 
+{\color{teal}C_C} (\Omega_{PC}-\nu_2 \Omega_{DC})] \nn
+\]
+
+\[
+\frac{\partial}{\partial x} (W ({\color{teal}\phi}) {\color{teal}\phi})
+\simeq
+\frac{W(\phi_{i+1})\phi_{i+1}-  W(\phi_{i-1})\phi_{i-1}}{2h}
+\]
+
+\[
+\frac{\partial^2 {\color{teal}\phi}}{\partial x^2}
+\simeq \frac{\phi_{i+1}-\phi_{i-1}}{2h}  
+\]
+
+
+The value of $\phi$ is prescribed at $x=0$ but only its derivative
+is prescribed at the bottom ($x=L$):
+\[
+\frac{\partial \phi (x,t)}{\partial x}|_L = 0
+\]
+i.e.
+\[
+\frac{\phi_i-\phi_{i-1}}{h}=0  \qquad \text{for} \quad i=nnx-1
 \] 
 
+The fully backward diffusion term on the right side is 
+\[
+\frac{\phi_{i-2}-2\phi_{i-1}+\phi_i}{h^2}
+\]
+which means that given the boundary condition it becomes
+\[
+\frac{\phi_{i-2}-\phi_{i-1}}{h^2}
+\]
 
+\printbibliography
 
 \end{document}
