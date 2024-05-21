@@ -5,7 +5,7 @@
 
 import numpy as np
 from scipy.integrate import solve_ivp
-from numba import jit, float64
+from numba import jit, float64, int64
 from numba.experimental import jitclass
 import time
 
@@ -69,6 +69,7 @@ spec = [
     ('t_scale', float64),
     ('v_scale', float64),
     ('Da', float64),
+    ('upwind_switch', int64)
 ]
 
 # This class contains the functions and parameters that are used to calculate
@@ -114,7 +115,7 @@ class LHeureux:
         self.CA_0 = 0.3
         self.c_ca_0 = 0.326 
         self.c_co_0 = 0.326
-        self.phi_0 = 0.8            # steady state 0.6, oscillations 0.8
+        self.phi_0 = 0.6            # steady state 0.6, oscillations 0.8
 
         self.rho_s0 = 2.95*self.AR_0+2.71*self.CA_0+2.8*(1-(self.AR_0+self.CA_0)) # initial sediment density (g/cm^3)
 
@@ -123,7 +124,7 @@ class LHeureux:
         self.CA_init = self.CA_0
         self.c_ca_init = self.c_ca_0
         self.c_co_init = self.c_co_0
-        self.phi_init = 0.8         # steady state 0.5, oscillations 0.8
+        self.phi_init = 0.5         # steady state 0.5, oscillations 0.8
 
         # more params (which depend on initial/boundary conditions)
         self.delta = self.rho_s0/(self.muA*np.sqrt(self.K_C))   # part of the Ca, CO3 reaction terms (cm^-3)
@@ -141,6 +142,8 @@ class LHeureux:
         self.v_scale = self.sed_rate
         
         self.Da = self.k2*self.t_scale    # Damkohler number
+        
+        self.upwind_switch = 1
     
     ################################################
     # hydraulic conductivity
@@ -237,6 +240,7 @@ class LHeureux:
     def RHS_AR(self, AR, CA, c_ca, c_co, phi, x, h):
         dAR_dt = np.zeros(len(x))
         u = self.U(phi)
+        
         for i in range(0,len(x)):
             # x = 0 BC, Dirichlet
             if (i==0):
@@ -245,7 +249,8 @@ class LHeureux:
             elif (i==len(x)-1):
                 dAR_dt[i]= -u[i]*(AR[i]-AR[i-1])/h + self.R_AR(AR[i],CA[i],c_ca[i],c_co[i],x[i])
             else:
-                dAR_dt[i]= -u[i]*(AR[i+1]-AR[i-1])/(2*h) + self.R_AR(AR[i],CA[i],c_ca[i],c_co[i], x[i])    
+                dAR_dt[i]= -u[i]*(AR[i+1]-AR[i-1])/(2*h) + self.upwind_switch*np.sign(u[i])*h/2*(AR[i+1] - 2*AR[i] + AR[i-1])/h**2 \
+                    + self.R_AR(AR[i],CA[i],c_ca[i],c_co[i], x[i])    
         return dAR_dt
 
     # Calcite (eqn 41)
@@ -260,7 +265,8 @@ class LHeureux:
             elif (i==len(x)-1):
                 dCA_dt[i]= -u[i]*( CA[i]-CA[i-1] ) / h + self.R_CA(AR[i], CA[i], c_ca[i], c_co[i], x[i])
             else:
-                dCA_dt[i]= -u[i]*( CA[i+1]-CA[i-1])/(2*h)+self.R_CA(AR[i],CA[i],c_ca[i],c_co[i],x[i])
+                dCA_dt[i]= -u[i]*( CA[i+1]-CA[i-1])/(2*h) + self.upwind_switch*np.sign(u[i])*h/2*(CA[i+1] - 2*CA[i] + CA[i-1])/h**2 \
+                    +self.R_CA(AR[i],CA[i],c_ca[i],c_co[i],x[i])
         return dCA_dt
     
     # Ca ions (eqn 42)
@@ -278,8 +284,7 @@ class LHeureux:
                 dc_ca_dt[i] = 0
             # x = Lx BC, df/dx = 0
             elif (i==len(x)-1):
-                dc_ca_dt[i] = - w[i]*( c_ca[i] - c_ca[i-1] ) / (h) +\
-                              ( 1 / phi[i] ) * ( phi[i-2] * self.d_c_ca(phi[i-2]) * c_ca[i-2] -\
+                dc_ca_dt[i] =  ( 1 / phi[i] ) * ( phi[i-2] * self.d_c_ca(phi[i-2]) * c_ca[i-2] -\
                                                    phi[i-1] * self.d_c_ca(phi[i-1]) * c_ca[i-1] ) / h**2  +\
                               self.R_c_ca(AR[i], CA[i], c_ca[i], c_co[i], phi[i], x[i]) 
             else:
@@ -304,8 +309,7 @@ class LHeureux:
                 dc_co_dt[i] = 0
             # x = Lx BC, df/dx = 0
             elif (i==len(x)-1):
-                dc_co_dt[i] = - w[i]*( c_co[i] - c_co[i-1] ) / h +\
-                              ( 1 / phi[i] )*( phi[i-2] * self.d_c_co(phi[i-2]) * c_co[i-2] -\
+                dc_co_dt[i] = ( 1 / phi[i] )*( phi[i-2] * self.d_c_co(phi[i-2]) * c_co[i-2] -\
                                                phi[i-1] * self.d_c_co(phi[i-1]) * c_co[i-1] ) / h**2 +\
                               self.R_c_co(AR[i], CA[i], c_ca[i], c_co[i], phi[i], x[i]) 
             else:
@@ -355,7 +359,7 @@ class LHeureux:
 lh = LHeureux()
 
 # set up the spatial grid
-nnx = 500
+nnx = 200
 L_x = 500/lh.x_scale 
 h = L_x/(nnx-1)
 x = np.linspace(0, L_x,nnx)
@@ -376,10 +380,10 @@ X_new = np.zeros([nnx*5])
 
 # time integration values
 t0 = 0.0
-tf = 50/lh.t_scale # sim time in a, scaled to dimensionless form 
+tf = 5000/lh.t_scale # sim time in a, scaled to dimensionless form 
 
 # set the timestep manually ONLY used in Euler mode
-delta_t = 0.01/lh.t_scale   # timestep in a, 1.13e-2/tsc = 10^-6 in scaled time
+delta_t = 0.001/lh.t_scale   # timestep in a, 1.13e-2/tsc = 10^-6 in scaled time
 t_arr = np.arange(t0, tf, delta_t)
 
 # labels corresponding the the soln variables, for print statements
@@ -390,15 +394,15 @@ verbose = True        # print out extra info at each step, for debugging
 method = 'Euler'      # choice of method for time integration
                       # options currently: 'Euler','RK23','RK45','DOP853'
 
-steadyCheck = True    # switch for optional steady state checking
+steadyCheck = False    # switch for optional steady state checking
 tol = 1e-6            # tolerance for minimum variation between steps, needs tuning to tstep?
 count_threshold = 100 # tsteps for which solution variation must remain under to trigger steady state
 steady_count = 0      # variable to track how many continous steps a steady state was present in
  
 
 
-print_freq = 100      # frequency of print statements in Euler mode
-output_freq = 10      # frequency of soln storage
+print_freq = 1000      # frequency of print statements in Euler mode
+output_freq = 100      # frequency of soln storage
 
 t_eval = t_arr[::output_freq] # times at which to store the solution, for ivp routines
 
