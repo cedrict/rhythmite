@@ -83,7 +83,7 @@ class LHeureux:
     def __init__(self):
         
         # physical constants
-        self.g = 9.81*100           # gravitational acceleration (cm/s^2)???
+        self.g = 9.81*100           # gravitational acceleration (cm/s^2)
         
         # model parameters
         self.K_C = 10**-6.37        # Calcite solubility (M^2)
@@ -231,6 +231,18 @@ class LHeureux:
         # scaled with D_Ca_0
         return self.D_CO/self.D_Ca_0*(1 / ( 1 - 2*np.log(phi) ) )
 
+    # calculate the grid Peclet no.
+    # use already calculated velocity to reduce fn calls
+    def Pec_phi(self, w, h):
+        return w*h/(2*self.d_phi) 
+    
+    def Pec_c_ca(self,w, h, phi):
+        return w*h/(2*self.d_c_ca(phi))
+    
+    def Pec_c_co(self, w, h, phi):
+        return w*h/(2*self.d_c_co(phi))
+
+
     #################################################################
     ##### functions which calculate the full RHS of eqns 40-43 ######
     #####   with spatial derivative stencils applied for MOL   ######
@@ -249,7 +261,7 @@ class LHeureux:
             elif (i==len(x)-1):
                 dAR_dt[i]= -u[i]*(AR[i]-AR[i-1])/h + self.R_AR(AR[i],CA[i],c_ca[i],c_co[i],x[i])
             else:
-                dAR_dt[i]= -u[i]*(AR[i+1]-AR[i-1])/(2*h) + self.upwind_switch*np.sign(u[i])*h/2*(AR[i+1] - 2*AR[i] + AR[i-1])/h**2 \
+                dAR_dt[i]= -u[i]*( (AR[i+1]-AR[i-1])/(2*h) - self.upwind_switch*np.sign(u[i])*h/2*(AR[i+1] - 2*AR[i] + AR[i-1])/h**2 )\
                     + self.R_AR(AR[i],CA[i],c_ca[i],c_co[i], x[i])    
         return dAR_dt
 
@@ -265,7 +277,7 @@ class LHeureux:
             elif (i==len(x)-1):
                 dCA_dt[i]= -u[i]*( CA[i]-CA[i-1] ) / h + self.R_CA(AR[i], CA[i], c_ca[i], c_co[i], x[i])
             else:
-                dCA_dt[i]= -u[i]*( CA[i+1]-CA[i-1])/(2*h) + self.upwind_switch*np.sign(u[i])*h/2*(CA[i+1] - 2*CA[i] + CA[i-1])/h**2 \
+                dCA_dt[i]= -u[i]*( ( CA[i+1]-CA[i-1])/(2*h) - self.upwind_switch*np.sign(u[i])*h/2*(CA[i+1] - 2*CA[i] + CA[i-1])/h**2 )\
                     +self.R_CA(AR[i],CA[i],c_ca[i],c_co[i],x[i])
         return dCA_dt
     
@@ -275,9 +287,11 @@ class LHeureux:
         w = self.W(phi)
         phi_half = np.zeros(len(x)-1)
         d_ca_half = np.zeros(len(x)-1)
+        
         for i in range(0,len(x)-1):
             phi_half[i] = ( phi[i+1] + phi[i] ) / 2
             d_ca_half[i] = ( self.d_c_ca(phi[i+1]) + self.d_c_ca(phi[i]) ) / 2
+        
         for i in range(0,len(x)):
             # x = 0 BC, Dirichlet
             if (i==0):
@@ -300,6 +314,7 @@ class LHeureux:
         w = self.W(phi)
         phi_half = np.zeros(len(x)-1)
         d_co_half = np.zeros(len(x)-1)
+        
         for i in range(0,len(x)-1):
             phi_half[i] = ( phi[i+1] + phi[i] ) / 2
             d_co_half[i] = ( self.d_c_co(phi[i+1]) + self.d_c_co(phi[i]) ) / 2
@@ -350,6 +365,7 @@ class LHeureux:
         dc_ca_dt = self.RHS_c_ca(X[0:nnx], X[nnx:2*nnx], X[2*nnx:3*nnx], X[3*nnx:4*nnx], X[4*nnx:5*nnx], x, h)
         dc_co_dt = self.RHS_c_co(X[0:nnx], X[nnx:2*nnx], X[2*nnx:3*nnx], X[3*nnx:4*nnx], X[4*nnx:5*nnx], x, h)
         dphi_dt  = self.RHS_phi( X[0:nnx], X[nnx:2*nnx], X[2*nnx:3*nnx], X[3*nnx:4*nnx], X[4*nnx:5*nnx], x, h)
+        
         
         return np.concatenate((dAR_dt, dCA_dt, dc_ca_dt, dc_co_dt, dphi_dt)) 
 
@@ -441,6 +457,11 @@ if (method=='Euler'):
         
         # calculate the new X using forward Euler
         X_new = X + delta_t*dX_dt
+        
+        ####################### phi BC at nnx #########################
+        # want a flat derivative here so we set phi(nnx-1) - phi(nnx-2)
+        X_new[5*nnx-1] = X_new[5*nnx-2]
+        
         
         U_temp = lh.U(X_new[4*nnx:5*nnx])
         W_temp = lh.W(X_new[4*nnx:5*nnx])
