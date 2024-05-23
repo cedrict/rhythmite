@@ -115,7 +115,7 @@ class LHeureux:
         self.CA_0 = 0.3
         self.c_ca_0 = 0.326 
         self.c_co_0 = 0.326
-        self.phi_0 = 0.6            # steady state 0.6, oscillations 0.8
+        self.phi_0 = 0.8            # steady state 0.6, oscillations 0.8
 
         self.rho_s0 = 2.95*self.AR_0+2.71*self.CA_0+2.8*(1-(self.AR_0+self.CA_0)) # initial sediment density (g/cm^3)
 
@@ -124,7 +124,7 @@ class LHeureux:
         self.CA_init = self.CA_0
         self.c_ca_init = self.c_ca_0
         self.c_co_init = self.c_co_0
-        self.phi_init = 0.5         # steady state 0.5, oscillations 0.8
+        self.phi_init = 0.8         # steady state 0.5, oscillations 0.8
 
         # more params (which depend on initial/boundary conditions)
         self.delta = self.rho_s0/(self.muA*np.sqrt(self.K_C))   # part of the Ca, CO3 reaction terms (cm^-3)
@@ -374,34 +374,6 @@ class LHeureux:
 # create instance of the model class
 lh = LHeureux()
 
-# set up the spatial grid
-nnx = 200
-L_x = 500/lh.x_scale 
-h = L_x/(nnx-1)
-x = np.linspace(0, L_x,nnx)
-
-# set the initial conditions for each soln variable
-AR   = np.ones(nnx)*lh.AR_init
-CA   = np.ones(nnx)*lh.CA_init
-c_ca = np.ones(nnx)*lh.c_ca_init
-c_co = np.ones(nnx)*lh.c_co_init
-phi  = np.ones(nnx)*lh.phi_init
-
-# set the phi boundary in case it's different
-phi[0] = lh.phi_0
-
-# create initial X and X_new arrays
-X = np.concatenate([AR, CA, c_ca, c_co, phi])
-X_new = np.zeros([nnx*5])
-
-# time integration values
-t0 = 0.0
-tf = 5000/lh.t_scale # sim time in a, scaled to dimensionless form 
-
-# set the timestep manually ONLY used in Euler mode
-delta_t = 0.001/lh.t_scale   # timestep in a, 1.13e-2/tsc = 10^-6 in scaled time
-t_arr = np.arange(t0, tf, delta_t)
-
 # labels corresponding the the soln variables, for print statements
 labels=['AR  ', 'CA  ', 'c_ca', 'c_co', 'phi ']
 
@@ -409,21 +381,73 @@ labels=['AR  ', 'CA  ', 'c_ca', 'c_co', 'phi ']
 verbose = True        # print out extra info at each step, for debugging
 method = 'Euler'      # choice of method for time integration
                       # options currently: 'Euler','RK23','RK45','DOP853'
+restart = False       # flag to determine a restart from file
+restrt_tstep = 10000     # tstep number of restart file to use
+
 
 steadyCheck = False    # switch for optional steady state checking
 tol = 1e-6            # tolerance for minimum variation between steps, needs tuning to tstep?
 count_threshold = 100 # tsteps for which solution variation must remain under to trigger steady state
 steady_count = 0      # variable to track how many continous steps a steady state was present in
- 
-
 
 print_freq = 1000      # frequency of print statements in Euler mode
 output_freq = 100      # frequency of soln storage
+checkpnt_freq = 14e7    # frequency of restart file write
+
+########################### space grid setup ##################################
+nnx = 200                   # number of grid points
+L_x = 500/lh.x_scale        # Physical size of domain cm/x_scale
+h = L_x/(nnx-1)             # spatial step size
+x = np.linspace(0, L_x,nnx) # position array
+
+
+########################### initial conditions ################################
+X_new = np.zeros([nnx*5])   # vector for new X calculated at each point
+
+if (restart):
+    # read the restart file
+    # store in X
+    rstrt = np.loadtxt('restrt_%08d.ascii'%(restrt_tstep))
+    
+    t0 = rstrt[0] # set initial time with the time the restart was produced
+    
+    X = rstrt[1:] # fill X arr with the read in values
+      
+else:
+    # set the initial time to zero for new run
+    t0  = 0.0
+    
+    # set initial conditions from the values defined in LHeureux class
+    AR   = np.ones(nnx)*lh.AR_init
+    CA   = np.ones(nnx)*lh.CA_init
+    c_ca = np.ones(nnx)*lh.c_ca_init
+    c_co = np.ones(nnx)*lh.c_co_init
+    phi  = np.ones(nnx)*lh.phi_init
+
+    # set the phi boundary in case it's different
+    phi[0] = lh.phi_0
+
+    # combine to create initial X
+    X = np.concatenate([AR, CA, c_ca, c_co, phi])
+    
+    
+######################## time integration values ##############################
+
+tf = 15/lh.t_scale # final sim time in a, scaled to dimensionless form 
+
+# set the timestep manually, ONLY used in Euler mode
+delta_t = 0.001/lh.t_scale   # timestep in a, 1.13e-2/tsc = 10^-6 in scaled time
+t_arr = np.arange(t0, tf, delta_t)
 
 t_eval = t_arr[::output_freq] # times at which to store the solution, for ivp routines
 
+# open stats files
 velstats_file=open('stats_vel.ascii',"w")
-stats_file=open('stats_fields.ascii',"w")
+AR_file=open('stats_AR.ascii',"w")
+CA_file=open('stats_CA.ascii',"w")
+cca_file=open('stats_c_ca.ascii',"w")
+cco_file=open('stats_c_co.ascii',"w")
+phi_file=open('stats_phi.ascii',"w")
 
 ###############################################################################
 ###############################################################################
@@ -458,10 +482,12 @@ if (method=='Euler'):
         # calculate the new X using forward Euler
         X_new = X + delta_t*dX_dt
         
-        ####################### phi BC at nnx #########################
+        #######################################################################
+        ##################### phi, c_ca, c_co BC at nnx #######################
         # want a flat derivative here so we set phi(nnx-1) - phi(nnx-2)
         X_new[5*nnx-1] = X_new[5*nnx-2]
-        
+        X_new[4*nnx-1] = X_new[4*nnx-2]
+        X_new[3*nnx-1] = X_new[3*nnx-2]
         
         U_temp = lh.U(X_new[4*nnx:5*nnx])
         W_temp = lh.W(X_new[4*nnx:5*nnx])
@@ -483,23 +509,31 @@ if (method=='Euler'):
             else:
                 X_new[j*nnx:(j+1)*nnx] = np.clip(X_new[j*nnx:(j+1)*nnx], 0.0, 1.0e5)
 
-        velstats_file.write("%d %6e %6e %6e %6e \n" % (i,np.min(U_temp),\
+        velstats_file.write("%d %4e %4e %4e %4e \n" % (i,np.min(U_temp),\
                                                          np.max(U_temp),\
                                                          np.min(W_temp),\
                                                          np.max(W_temp)))
         velstats_file.flush()
 
-        stats_file.write("%d %e %e %e %e %e %e %e %e %e %e\n" %\
-                                                      (i,np.min(X_new[0*nnx:1*nnx]),\
-                                                         np.max(X_new[0*nnx:1*nnx]),\
-                                                         np.min(X_new[1*nnx:2*nnx]),\
-                                                         np.min(X_new[1*nnx:2*nnx]),\
-                                                         np.min(X_new[2*nnx:3*nnx]),\
-                                                         np.min(X_new[2*nnx:3*nnx]),\
-                                                         np.min(X_new[3*nnx:4*nnx]),\
-                                                         np.min(X_new[3*nnx:4*nnx]),\
-                                                         np.min(X_new[4*nnx:5*nnx]),\
-                                                         np.max(X_new[4*nnx:5*nnx])))
+        AR_file.write("%d %4e %4e \n" %(i,np.min(X_new[0*nnx:1*nnx]),\
+                                         np.max(X_new[0*nnx:1*nnx])))
+        AR_file.flush()
+        
+        CA_file.write("%d %4e %4e \n" %(i,np.min(X_new[1*nnx:2*nnx]),\
+                                         np.max(X_new[1*nnx:2*nnx])))
+        CA_file.flush()
+        
+        cca_file.write("%d %4e %4e \n" %(i,np.min(X_new[2*nnx:3*nnx]),\
+                                         np.max(X_new[2*nnx:3*nnx])))
+        cca_file.flush()
+        
+        cco_file.write("%d %4e %4e \n" %(i,np.min(X_new[3*nnx:4*nnx]),\
+                                         np.max(X_new[3*nnx:4*nnx])))
+        cco_file.flush()
+        
+        phi_file.write("%d %4e %4e \n" %(i,np.min(X_new[4*nnx:5*nnx]),\
+                                         np.max(X_new[4*nnx:5*nnx])))
+        phi_file.flush()
 
             
         # print out min, max values for each t step if needed
@@ -553,7 +587,13 @@ if (method=='Euler'):
                 t_eval = t_eval[:len(soln)]
                 
                 break
-            
+        ############# write restart file ################## 
+        if (i%checkpnt_freq==0):
+            # write a restart file,
+            # format is current t, followed by X arr
+            np.savetxt('restrt_%08d.ascii'%(i), \
+                       np.concatenate((np.array([t_arr[i]]),X_new)))
+        
             
         # move the new values into X
         X = np.copy(X_new)
@@ -574,7 +614,7 @@ elif(method=='RK23' or method=='RK45' or method=='DOP853'): # use the scipy solv
     print('using ivp with method=%s'%(method))
     start = time.time()
     if (output_freq==1):
-        # allow ivp_solve to output it's own full soln
+        # allow ivp_solve to output its own full soln
         soln_full = solve_ivp(lh.X_RHS, (t0,tf), X, args=(nnx, x, h), method=method)
     else:
         # use subsampled t_arr points for evaluation
