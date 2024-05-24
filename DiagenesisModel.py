@@ -5,7 +5,7 @@
 
 import numpy as np
 from scipy.integrate import solve_ivp
-from numba import jit, float64, int64
+from numba import jit, float64, int64, boolean
 from numba.experimental import jitclass
 import time
 
@@ -15,15 +15,17 @@ from saveOutput import export_to_ascii, export_to_vtu, export_to_vtu2
 
 ###############################################################################
 @jit(nopython=True)
-def heaviside(x,xbot,xtop,xscale):
-    #if x <= xbot/xscale and x >= xtop/xscale:
-    #   print (x,1)
-    #   return 1.
-    #else:
-    #   print (x,0)
-    #   return 0.
-    val=0.5*(1+np.tanh((x-xtop/xscale)*500)) *0.5*(1+np.tanh((xbot/xscale-x)*500))
-    return val
+def heaviside(x,xbot,xtop,xscale, smooth_switch):
+    if (smooth_switch==False):
+        if x <= xbot/xscale and x >= xtop/xscale:
+          #print (x,1)
+          return 1.
+        else:
+          #print (x,0)
+          return 0.
+    else:
+        val=0.5*(1+np.tanh((x-xtop/xscale)*500)) *0.5*(1+np.tanh((xbot/xscale-x)*500))
+        return val
 
 ###############################################################################
 
@@ -69,7 +71,8 @@ spec = [
     ('t_scale', float64),
     ('v_scale', float64),
     ('Da', float64),
-    ('upwind_switch', int64)
+    ('upwind_switch', int64),
+    ('smooth_switch', boolean)
 ]
 
 # This class contains the functions and parameters that are used to calculate
@@ -144,6 +147,7 @@ class LHeureux:
         self.Da = self.k2*self.t_scale    # Damkohler number
         
         self.upwind_switch = 1
+        self.smooth_switch = False
     
     ################################################
     # hydraulic conductivity
@@ -178,7 +182,7 @@ class LHeureux:
         sp = c_ca*c_co*self.K_C/self.K_A - 1 
         Omega_PA = (max(0.0,sp))**self.m
         sa = 1 - c_ca*c_co*self.K_C/self.K_A
-        Omega_DA = (max(0.0,sa))**self.m * heaviside(x,self.ADZ_bot,self.ADZ_top,self.x_scale)
+        Omega_DA = (max(0.0,sa))**self.m * heaviside(x,self.ADZ_bot,self.ADZ_top,self.x_scale, self.smooth_switch)
         return Omega_DA - self.nu1*Omega_PA
 
     def Omega_C(self, c_ca, c_co): 
@@ -390,8 +394,8 @@ tol = 1e-6            # tolerance for minimum variation between steps, needs tun
 count_threshold = 100 # tsteps for which solution variation must remain under to trigger steady state
 steady_count = 0      # variable to track how many continous steps a steady state was present in
 
-print_freq = 1000      # frequency of print statements in Euler mode
-output_freq = 100      # frequency of soln storage
+print_freq = 10      # frequency of print statements in Euler mode
+output_freq = 1      # frequency of soln storage
 checkpnt_freq = 14e7    # frequency of restart file write
 
 ########################### space grid setup ##################################
@@ -433,10 +437,10 @@ else:
     
 ######################## time integration values ##############################
 
-tf = 15/lh.t_scale # final sim time in a, scaled to dimensionless form 
+tf = 2e-6#15/lh.t_scale # final sim time in a, scaled to dimensionless form 
 
 # set the timestep manually, ONLY used in Euler mode
-delta_t = 0.001/lh.t_scale   # timestep in a, 1.13e-2/tsc = 10^-6 in scaled time
+delta_t = 1e-6#0.001/lh.t_scale   # timestep in a, 1.13e-2/tsc = 10^-6 in scaled time
 t_arr = np.arange(t0, tf, delta_t)
 
 t_eval = t_arr[::output_freq] # times at which to store the solution, for ivp routines
@@ -634,8 +638,8 @@ elif(method=='RK23' or method=='RK45' or method=='DOP853'): # use the scipy solv
 else:
     print('selected method is not a supported choice')
     print('Options are Euler, RK23, RK45, DOP853')
-
-print('***********************istep=',i)
+if (method=='Euler'):
+    print('***********************istep=',i)
 print('time elapsed=',  time.time()-start)
 
 ###########################################################################################
