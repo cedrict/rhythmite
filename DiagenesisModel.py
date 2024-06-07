@@ -16,13 +16,14 @@ from saveOutput import export_to_ascii, export_to_vtu, export_to_vtu2
 ###############################################################################
 @jit(nopython=True)
 def heaviside(x,xbot,xtop,xscale, smooth_switch):
+    
     if (smooth_switch==False):
-        if x <= xbot/xscale and x >= xtop/xscale:
+        if x < xbot/xscale and x > xtop/xscale:
           #print (x,1)
-          return 1.
+          return 1.0
         else:
           #print (x,0)
-          return 0.
+          return 0.0
     else:
         val=0.5*(1+np.tanh((x-xtop/xscale)*500)) *0.5*(1+np.tanh((xbot/xscale-x)*500))
         return val
@@ -72,7 +73,8 @@ spec = [
     ('v_scale', float64),
     ('Da', float64),
     ('upwind_switch', int64),
-    ('smooth_switch', boolean)
+    ('smooth_switch', boolean),
+    ('FV_switch', int64)
 ]
 
 # This class contains the functions and parameters that are used to calculate
@@ -105,7 +107,7 @@ class LHeureux:
         
         self.k1 = 1.0               # reaction rate constants (a^-1)
         self.k2 = self.k1         
-        self.k3 = 0.01
+        self.k3 = 0.1
         self.k4 =self.k3
         self.muA = 100.09           # (g/mol)
         
@@ -116,8 +118,8 @@ class LHeureux:
         # upper boundary condition values (x=0)
         self.AR_0 = 0.6                
         self.CA_0 = 0.3
-        self.c_ca_0 = 0.326 
-        self.c_co_0 = 0.326
+        self.c_ca_0 = 0.326e-3/np.sqrt(self.K_C)
+        self.c_co_0 = 0.326e-3/np.sqrt(self.K_C)
         self.phi_0 = 0.8            # steady state 0.6, oscillations 0.8
 
         self.rho_s0 = 2.95*self.AR_0+2.71*self.CA_0+2.8*(1-(self.AR_0+self.CA_0)) # initial sediment density (g/cm^3)
@@ -146,8 +148,9 @@ class LHeureux:
         
         self.Da = self.k2*self.t_scale    # Damkohler number
         
-        self.upwind_switch = 1
-        self.smooth_switch = False
+        self.upwind_switch = 1          # optionally use upwind derivatives in AR, CA eqns
+        self.smooth_switch = False      # option to use smoothed Heaviside fn for ADZ
+        self.FV_switch = 0              # optionally use the Fiadeiro-Veronis scheme ofr c_ca, co, phi
     
     ################################################
     # hydraulic conductivity
@@ -179,17 +182,23 @@ class LHeureux:
     ################################################
 
     def Omega_A(self, c_ca, c_co, x):
+        
         sp = c_ca*c_co*self.K_C/self.K_A - 1 
-        Omega_PA = (max(0.0,sp))**self.m
+        Omega_PA = (max(0.0,sp))**self.m 
+        
         sa = 1 - c_ca*c_co*self.K_C/self.K_A
         Omega_DA = (max(0.0,sa))**self.m * heaviside(x,self.ADZ_bot,self.ADZ_top,self.x_scale, self.smooth_switch)
+        
         return Omega_DA - self.nu1*Omega_PA
 
     def Omega_C(self, c_ca, c_co): 
+        
         sp = c_ca*c_co - 1
         Omega_PC = (max(0.0,sp))**self.n
+        
         sa = 1 - c_ca*c_co 
         Omega_DC = (max(0.0, sa))**self.n
+        
         return Omega_PC - self.nu2*Omega_DC 
     
     ################################################
@@ -245,7 +254,19 @@ class LHeureux:
     
     def Pec_c_co(self, w, h, phi):
         return w*h/(2*self.d_c_co(phi))
+    
+    # also calculate the sigmas for the FV scheme
+    def sigma_ca(self, w, h, phi):
+        pec = self.Pec_c_ca(w,h,phi)
+        return 1/np.tanh(pec) - 1/pec
 
+    def sigma_co(self, w, h, phi):
+        pec = self.Pec_c_co(w,h,phi)
+        return 1/np.tanh(pec) - 1/pec
+    
+    def sigma_phi(self, w, h):
+        pec = self.Pec_phi(w,h)
+        return 1/np.tanh(pec) - 1/pec
 
     #################################################################
     ##### functions which calculate the full RHS of eqns 40-43 ######
@@ -306,7 +327,8 @@ class LHeureux:
                                                    phi[i-1] * self.d_c_ca(phi[i-1]) * c_ca[i-1] ) / h**2  +\
                               self.R_c_ca(AR[i], CA[i], c_ca[i], c_co[i], phi[i], x[i]) 
             else:
-                dc_ca_dt[i] = - w[i]*( c_ca[i+1] - c_ca[i-1] ) / (2*h) +\
+                dc_ca_dt[i] = - w[i]*( (c_ca[i+1] - c_ca[i-1]) / (2*h) +\
+                                    -self.FV_switch*self.sigma_ca(w[i], h, phi[i])*h/2*(c_ca[i+1] - 2*c_ca[i] + c_ca[i-1])/(2*h) ) +\
                               ( 1 / phi[i] ) * ( phi_half[i]   * d_ca_half[i]  *(c_ca[i+1] - c_ca[i]) -\
                                                  phi_half[i-1] * d_ca_half[i-1]*(c_ca[i] - c_ca[i-1]) ) / h**2 +\
                               self.R_c_ca(AR[i], CA[i], c_ca[i], c_co[i], phi[i], x[i])
@@ -332,7 +354,8 @@ class LHeureux:
                                                phi[i-1] * self.d_c_co(phi[i-1]) * c_co[i-1] ) / h**2 +\
                               self.R_c_co(AR[i], CA[i], c_ca[i], c_co[i], phi[i], x[i]) 
             else:
-                dc_co_dt[i] = - w[i]*( c_co[i+1] - c_co[i-1] ) / (2*h) +\
+                dc_co_dt[i] = - w[i]*( (c_co[i+1] - c_co[i-1]) / (2*h) +\
+                              -self.FV_switch*self.sigma_co(w[i], h, phi[i])*h/2*(c_co[i+1] - 2*c_co[i] + c_co[i-1])/(2*h) ) +\
                               (1 / phi[i] )*( phi_half[i]   * d_co_half[i]   * ( c_co[i+1] - c_co[i] ) -\
                                               phi_half[i-1] * d_co_half[i-1] * ( c_co[i] - c_co[i-1] ) ) / h**2 +\
                               self.R_c_co(AR[i], CA[i], c_ca[i], c_co[i], phi[i], x[i])
@@ -353,6 +376,7 @@ class LHeureux:
                              self.R_phi(AR[i], CA[i], c_ca[i], c_co[i], phi[i], x[i])
             else:
                 dphi_dt[i] = -( w[i+1] * phi[i+1] - w[i-1] * phi[i-1] ) / (2*h) +\
+                    self.FV_switch*self.sigma_phi(w[i], h)*h/2*(phi[i+1]*w[i+1] - 2*phi[i]*w[i] + phi[i-1]*w[i-1])/(2*h) +\
                             self.d_phi * ( phi[i+1] - 2*phi[i] + phi[i-1] ) / h**2 +\
                             self.R_phi(AR[i], CA[i], c_ca[i], c_co[i], phi[i], x[i])
         return dphi_dt
@@ -390,12 +414,12 @@ restrt_tstep = 10000     # tstep number of restart file to use
 
 
 steadyCheck = False    # switch for optional steady state checking
-tol = 1e-6            # tolerance for minimum variation between steps, needs tuning to tstep?
-count_threshold = 100 # tsteps for which solution variation must remain under to trigger steady state
-steady_count = 0      # variable to track how many continous steps a steady state was present in
+tol = 1e-6             # tolerance for minimum variation between steps, needs tuning to tstep?
+count_threshold = 100  # tsteps for which solution variation must remain under to trigger steady state
+steady_count = 0       # variable to track how many continous steps a steady state was present in
 
-print_freq = 10      # frequency of print statements in Euler mode
-output_freq = 1      # frequency of soln storage
+print_freq = 10         # frequency of print statements in Euler mode
+output_freq = 1         # frequency of soln storage
 checkpnt_freq = 14e7    # frequency of restart file write
 
 ########################### space grid setup ##################################
@@ -418,7 +442,7 @@ if (restart):
     X = rstrt[1:] # fill X arr with the read in values
       
 else:
-    # set the initial time to zero for new run
+    # for new run
     t0  = 0.0
     
     # set initial conditions from the values defined in LHeureux class
@@ -619,7 +643,7 @@ elif(method=='RK23' or method=='RK45' or method=='DOP853'): # use the scipy solv
     start = time.time()
     if (output_freq==1):
         # allow ivp_solve to output its own full soln
-        soln_full = solve_ivp(lh.X_RHS, (t0,tf), X, args=(nnx, x, h), method=method)
+        soln_full = solve_ivp(lh.X_RHS, (t0,tf), X, args=(nnx, x, h), method=method, first_step=1e-6)
     else:
         # use subsampled t_arr points for evaluation
         soln_full = solve_ivp(lh.X_RHS, (t0,tf), X, args=(nnx, x, h), method=method, t_eval=t_eval)
