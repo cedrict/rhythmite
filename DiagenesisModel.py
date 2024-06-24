@@ -98,11 +98,11 @@ class LHeureux:
         self.sed_rate = 0.1         # sedimentation rate (cm/a)
         self.m = 2.48               # Power in def. of Omega_A (Eqn. 45)
         self.n = 2.8                # Power in def. of Omega_C (Eqn. 45)
-        self.rho_w = 1.023          # density of water (gm/cm^3)
+        self.rho_w = 1.023          # density of water (g/cm^3)
         self.D_Ca_0 = 131.9         # diffusion coefficient of Ca (cm^2/a) (used to scale to dimensionless units)
         self.D_CO = 272.6           # scaled diffusion coefficient of CO3 (cm^2/a)
         
-        self.b = 5.0e-4             # sediment compressibility (Pa^-1)
+        self.b = 5.0e-4*0.2             # sediment compressibility (Pa^-1)
         self.beta = 0.1             # Hydraulic conductivity constant (cm/a)
         
         self.k1 = 1.0               # reaction rate constants (a^-1)
@@ -418,9 +418,10 @@ tol = 1e-6             # tolerance for minimum variation between steps, needs tu
 count_threshold = 100  # tsteps for which solution variation must remain under to trigger steady state
 steady_count = 0       # variable to track how many continous steps a steady state was present in
 
-print_freq = 10         # frequency of print statements in Euler mode
-output_freq = 1         # frequency of soln storage
+print_freq = 10000         # frequency of print statements in Euler mode
+output_freq = 1000         # frequency of soln storage
 checkpnt_freq = 14e7    # frequency of restart file write
+stats_freq = 1000         # frequecy to write to the _stats files
 
 ########################### space grid setup ##################################
 nnx = 200                   # number of grid points
@@ -461,7 +462,7 @@ else:
     
 ######################## time integration values ##############################
 
-tf = 2e-6#15/lh.t_scale # final sim time in a, scaled to dimensionless form 
+tf = 250000/lh.t_scale # final sim time in a, scaled to dimensionless form 
 
 # set the timestep manually, ONLY used in Euler mode
 delta_t = 1e-6#0.001/lh.t_scale   # timestep in a, 1.13e-2/tsc = 10^-6 in scaled time
@@ -537,31 +538,32 @@ if (method=='Euler'):
             else:
                 X_new[j*nnx:(j+1)*nnx] = np.clip(X_new[j*nnx:(j+1)*nnx], 0.0, 1.0e5)
 
-        velstats_file.write("%d %4e %4e %4e %4e \n" % (i,np.min(U_temp),\
-                                                         np.max(U_temp),\
-                                                         np.min(W_temp),\
-                                                         np.max(W_temp)))
-        velstats_file.flush()
+        if (i%stats_freq == 0):
+            velstats_file.write("%d %4e %4e %4e %4e \n" % (i,np.min(U_temp),\
+                                                             np.max(U_temp),\
+                                                             np.min(W_temp),\
+                                                             np.max(W_temp)))
+            velstats_file.flush()
 
-        AR_file.write("%d %4e %4e \n" %(i,np.min(X_new[0*nnx:1*nnx]),\
-                                         np.max(X_new[0*nnx:1*nnx])))
-        AR_file.flush()
+            AR_file.write("%d %4e %4e \n" %(i,np.min(X_new[0*nnx:1*nnx]),\
+                                              np.max(X_new[0*nnx:1*nnx])))
+            AR_file.flush()
         
-        CA_file.write("%d %4e %4e \n" %(i,np.min(X_new[1*nnx:2*nnx]),\
-                                         np.max(X_new[1*nnx:2*nnx])))
-        CA_file.flush()
+            CA_file.write("%d %4e %4e \n" %(i,np.min(X_new[1*nnx:2*nnx]),\
+                                              np.max(X_new[1*nnx:2*nnx])))
+            CA_file.flush()
         
-        cca_file.write("%d %4e %4e \n" %(i,np.min(X_new[2*nnx:3*nnx]),\
-                                         np.max(X_new[2*nnx:3*nnx])))
-        cca_file.flush()
+            cca_file.write("%d %4e %4e \n" %(i,np.min(X_new[2*nnx:3*nnx]),\
+                                               np.max(X_new[2*nnx:3*nnx])))
+            cca_file.flush()
         
-        cco_file.write("%d %4e %4e \n" %(i,np.min(X_new[3*nnx:4*nnx]),\
-                                         np.max(X_new[3*nnx:4*nnx])))
-        cco_file.flush()
+            cco_file.write("%d %4e %4e \n" %(i,np.min(X_new[3*nnx:4*nnx]),\
+                                               np.max(X_new[3*nnx:4*nnx])))
+            cco_file.flush()
         
-        phi_file.write("%d %4e %4e \n" %(i,np.min(X_new[4*nnx:5*nnx]),\
-                                         np.max(X_new[4*nnx:5*nnx])))
-        phi_file.flush()
+            phi_file.write("%d %4e %4e \n" %(i,np.min(X_new[4*nnx:5*nnx]),\
+                                               np.max(X_new[4*nnx:5*nnx])))
+            phi_file.flush()
 
             
         # print out min, max values for each t step if needed
