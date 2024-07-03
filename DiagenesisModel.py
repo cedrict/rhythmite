@@ -476,8 +476,7 @@ else:
     
 ######################## time integration values ##############################
 
-# tf = 250000/lh.t_scale # final sim time in a, scaled to dimensionless form 
-tf = 1e-1 # final sim time in a, scaled to dimensionless form 
+tf = 250000/lh.t_scale # final sim time in a, scaled to dimensionless form 
 
 # set the timestep manually, ONLY used in Euler mode
 delta_t = 1e-6#0.001/lh.t_scale   # timestep in a, 1.13e-2/tsc = 10^-6 in scaled time
