@@ -7,6 +7,7 @@ import numpy as np
 from scipy.integrate import solve_ivp
 from numba import jit, float64, int64, boolean
 from numba.experimental import jitclass
+from numba_progress import ProgressBar
 import time
 
 from saveOutput import export_to_ascii, export_to_vtu, export_to_vtu2
@@ -74,7 +75,8 @@ spec = [
     ('Da', float64),
     ('upwind_switch', int64),
     ('smooth_switch', boolean),
-    ('FV_switch', int64)
+    ('FV_switch', int64),
+    ('last_t', float64)
 ]
 
 # This class contains the functions and parameters that are used to calculate
@@ -151,6 +153,7 @@ class LHeureux:
         self.upwind_switch = 1          # optionally use upwind derivatives in AR, CA eqns
         self.smooth_switch = False      # option to use smoothed Heaviside fn for ADZ
         self.FV_switch = 0              # optionally use the Fiadeiro-Veronis scheme ofr c_ca, co, phi
+        self.last_t = 0.                # Helper variable for progress bar.
     
     ################################################
     # hydraulic conductivity
@@ -386,14 +389,22 @@ class LHeureux:
     # for use in the scipy ivp_solve function
     ########################################## 
 
-    def X_RHS(self, t, X, nnx, x, h):
+    def X_RHS(self, t, X, nnx, x, h, progress_proxy, progress_dt, t0):
+        # Code from 
+        # https://stackoverflow.com/questions/59047892/
+        # how-to-monitor-the-process-of-scipy-odeint
+        # If self.last_t has not been updated before, it should be set to t0.
+        if self.last_t == 0.:
+            self.last_t = t0
+        n = int((t - self.last_t) / progress_dt)
+        progress_proxy.update(n)
+        self.last_t += n * progress_dt
         
         dAR_dt   = self.RHS_AR(  X[0:nnx], X[nnx:2*nnx], X[2*nnx:3*nnx], X[3*nnx:4*nnx], X[4*nnx:5*nnx], x, h)
         dCA_dt   = self.RHS_CA(  X[0:nnx], X[nnx:2*nnx], X[2*nnx:3*nnx], X[3*nnx:4*nnx], X[4*nnx:5*nnx], x, h)
         dc_ca_dt = self.RHS_c_ca(X[0:nnx], X[nnx:2*nnx], X[2*nnx:3*nnx], X[3*nnx:4*nnx], X[4*nnx:5*nnx], x, h)
         dc_co_dt = self.RHS_c_co(X[0:nnx], X[nnx:2*nnx], X[2*nnx:3*nnx], X[3*nnx:4*nnx], X[4*nnx:5*nnx], x, h)
         dphi_dt  = self.RHS_phi( X[0:nnx], X[nnx:2*nnx], X[2*nnx:3*nnx], X[3*nnx:4*nnx], X[4*nnx:5*nnx], x, h)
-        
         
         return np.concatenate((dAR_dt, dCA_dt, dc_ca_dt, dc_co_dt, dphi_dt)) 
 
@@ -407,7 +418,7 @@ labels=['AR  ', 'CA  ', 'c_ca', 'c_co', 'phi ']
 
 # run settings 
 verbose = True        # print out extra info at each step, for debugging
-method = 'Euler'      # choice of method for time integration
+method = 'DOP853'      # choice of method for time integration
                       # options currently: 'Euler','RK23','RK45','DOP853'
 restart = False       # flag to determine a restart from file
 restrt_tstep = 10000     # tstep number of restart file to use
@@ -417,6 +428,9 @@ steadyCheck = False    # switch for optional steady state checking
 tol = 1e-6             # tolerance for minimum variation between steps, needs tuning to tstep?
 count_threshold = 100  # tsteps for which solution variation must remain under to trigger steady state
 steady_count = 0       # variable to track how many continous steps a steady state was present in
+
+# Number of progress updates.
+no_prog_upd = 1_000
 
 print_freq = 10000         # frequency of print statements in Euler mode
 output_freq = 1000         # frequency of soln storage
@@ -462,7 +476,8 @@ else:
     
 ######################## time integration values ##############################
 
-tf = 250000/lh.t_scale # final sim time in a, scaled to dimensionless form 
+# tf = 250000/lh.t_scale # final sim time in a, scaled to dimensionless form 
+tf = 1e-1 # final sim time in a, scaled to dimensionless form 
 
 # set the timestep manually, ONLY used in Euler mode
 delta_t = 1e-6#0.001/lh.t_scale   # timestep in a, 1.13e-2/tsc = 10^-6 in scaled time
@@ -644,11 +659,19 @@ elif(method=='RK23' or method=='RK45' or method=='DOP853'): # use the scipy solv
     print('using ivp with method=%s'%(method))
     start = time.time()
     if (output_freq==1):
-        # allow ivp_solve to output its own full soln
-        soln_full = solve_ivp(lh.X_RHS, (t0,tf), X, args=(nnx, x, h), method=method, first_step=1e-6)
+        with ProgressBar(total=no_prog_upd) as progress:
+            # allow ivp_solve to output its own full soln
+            soln_full = solve_ivp(lh.X_RHS, (t0,tf), X, 
+                                  args=(nnx, x, h, progress, 
+                                        (tf-t0)/no_prog_upd, t0), 
+                                  method=method, first_step=1e-6)
     else:
-        # use subsampled t_arr points for evaluation
-        soln_full = solve_ivp(lh.X_RHS, (t0,tf), X, args=(nnx, x, h), method=method, t_eval=t_eval)
+        with ProgressBar(total=no_prog_upd) as progress: 
+            # use subsampled t_arr points for evaluation
+            soln_full = solve_ivp(lh.X_RHS, (t0,tf), X, 
+                                  args=(nnx, x, h, progress, 
+                                        (tf-t0)/no_prog_upd, t0),
+                                  method=method, t_eval=t_eval)
     
     # produce separate soln and t_arrs to match output of Euler mode
     soln = soln_full.y
