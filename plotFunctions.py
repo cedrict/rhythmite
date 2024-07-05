@@ -122,38 +122,41 @@ def plotHeaviside(x):
 
 
 ##############################################################################
-def plotFrame(X, x, t, nnx, movieDir, U, W):
+def plotFrame(X, x, t, nnx, movieDir, U, W, ADZtop, ADZbot):
     
     # take current solution vars
     filename = '%s/solution_%.6f.png'%(movieDir, t)
     
     # plot spatial profile for all vars
-    fig, axs = plt.subplots(2,1,sharex = True, figsize=(10,14),gridspec_kw={'height_ratios': [2, 1]})
+    fig = plt.figure(figsize=(10,14), num=1, clear=True)
+    gs = fig.add_gridspec(2,1,height_ratios=[2,1])
+    ax1 = fig.add_subplot(gs[0])
     
-    axs[0].plot(x,X[0:nnx],label='AR')
-    axs[0].plot(x,X[nnx:2*nnx],label='CA')
-    axs[0].plot(x,X[4*nnx:5*nnx],label='phi')
-    axs[0].plot(x,X[2*nnx:3*nnx],label='c_ca')
-    axs[0].plot(x,X[3*nnx:4*nnx],label='c_co')
-    axs[0].legend(loc='upper right')
-    axs[0].set(ylabel='Concentrations', xlim=(0,500), ylim=(0,1.75))
-    
-    axs[1].plot(x, U, label='U')
-    axs[1].plot(x, W, label='W')
-    axs[1].legend(loc='upper right')
-
-    axs[1].set(xlim=(0,500), ylim=(-5,5), xlabel='x (cm)', ylabel='Velocities')
-    
+    ax1.plot(x,X[0:nnx],label='AR')
+    ax1.plot(x,X[nnx:2*nnx],label='CA')
+    ax1.plot(x,X[4*nnx:5*nnx],label='phi')
+    ax1.plot(x,X[2*nnx:3*nnx],label='c_ca')
+    ax1.plot(x,X[3*nnx:4*nnx],label='c_co')
+    ax1.plot(np.ones(50)*ADZtop, np.linspace(0,1.75,50),linestyle='--',color='k')
+    ax1.plot(np.ones(50)*ADZbot, np.linspace(0,1.75,50),linestyle='--',color='k')
+    ax1.legend(loc='upper right')
+    ax1.set(ylabel='Concentrations', xlim=(0,500), ylim=(0,1.75))
     # annotate with time
-    axs[0].text(20, 1.7,'t = %.3e'%(t))
+    ax1.text(20, 1.7,'t = %.2e'%(t))
+    
+    ax2 = fig.add_subplot(gs[1],sharex=ax1)
+    ax2.plot(x, U, label='U')
+    ax2.plot(x, W, label='W')
+    ax2.plot(np.ones(50)*ADZtop, np.linspace(-5,6,50),linestyle='--',color='k')
+    ax2.plot(np.ones(50)*ADZbot, np.linspace(-5,6,50),linestyle='--',color='k')
+    ax2.legend(loc='upper right')
+    ax2.set(xlim=(0,500), ylim=(-5,6), xlabel='x (cm)', ylabel='Velocities')
+    
+    
     fig.subplots_adjust(wspace=0, hspace=0.1)
     
     # save figure to a given directory
     plt.savefig(filename,bbox_inches='tight')
-    plt.close()
-    
-
-
 
 
 

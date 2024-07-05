@@ -647,9 +647,9 @@ if (method=='Euler'):
             np.savetxt('restrt_%08d.ascii'%(i), \
                        np.concatenate((np.array([t_arr[i]]),X_new)))
         
-        if (i%plot_freq==0):
+        if (plotMovie and i%plot_freq==0):
             # produce plot of current state
-            plotFrame(X, x*lh.x_scale, t_arr[i], nnx, movieDir, U_temp, W_temp)
+            plotFrame(X, x*lh.x_scale, t_arr[i], nnx, movieDir, U_temp, W_temp, lh.ADZ_top, lh.ADZ_bot)
             
                 
         # move the new values into X
