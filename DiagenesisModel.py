@@ -417,6 +417,8 @@ restrt_tstep = 10000     # tstep number of restart file to use
 plotMovie = True      # switch to turn on movie plotting
 movieDir = './movie_plts'
 
+storeReactions = True
+
 if (plotMovie):
     # create plt directory
     os.makedirs(movieDir)
@@ -426,11 +428,11 @@ tol = 1e-6             # tolerance for minimum variation between steps, needs tu
 count_threshold = 100  # tsteps for which solution variation must remain under to trigger steady state
 steady_count = 0       # variable to track how many continous steps a steady state was present in
 
-print_freq = 10000      # frequency of print statements in Euler mode
-output_freq = 1         # frequency of soln storage
-checkpnt_freq = 14e7    # frequency of restart file write
+print_freq = 1000      # frequency of print statements in Euler mode
+output_freq = 100         # frequency of soln storage
+checkpnt_freq = 1e7    # frequency of restart file write
 stats_freq = 1000       # frequecy to write to the _stats files
-plot_freq = 1           # frequency to create plots for movie
+plot_freq = 2000           # frequency to create plots for movie
 
 ########################### space grid setup ##################################
 nnx = 200                   # number of grid points
@@ -482,7 +484,7 @@ else:
     
 ######################## time integration values ##############################
 
-tf = 10e-6#/lh.t_scale # final sim time in a, scaled to dimensionless form 
+tf = 300000/lh.t_scale # final sim time in a, scaled to dimensionless form 
 
 # set the timestep manually, ONLY used in Euler mode
 delta_t = 1e-6#0.001/lh.t_scale   # timestep in a, 1.13e-2/tsc = 10^-6 in scaled time
@@ -516,6 +518,9 @@ if (method=='Euler'):
     U_temp = np.zeros(nnx)
     W_temp = np.zeros(nnx)
     
+    if (storeReactions):
+        R_temp = np.zeros(5*nnx)
+    
     start = time.time()
     for i in range(0,len(t_arr)):
         
@@ -538,6 +543,15 @@ if (method=='Euler'):
         
         U_temp = lh.U(X_new[4*nnx:5*nnx])
         W_temp = lh.W(X_new[4*nnx:5*nnx])
+        
+        # also calc + store reaction rates if required
+        if (storeReactions):
+            for j in range(0,nnx):
+                R_temp[j] = lh.R_AR(X_new[j], X_new[nnx+j], X_new[2*nnx+j], X_new[3*nnx+j], x[j])
+                R_temp[nnx+j] = lh.R_CA(X_new[j], X_new[nnx+j], X_new[2*nnx+j], X_new[3*nnx+j], x[j])
+                R_temp[2*nnx+j] = lh.R_c_ca(X_new[j], X_new[nnx+j], X_new[2*nnx+j], X_new[3*nnx+j],X_new[4*nnx+j] , x[j])
+                R_temp[3*nnx+j] = lh.R_c_co(X_new[j], X_new[nnx+j], X_new[2*nnx+j], X_new[3*nnx+j],X_new[4*nnx+j], x[j])
+                R_temp[4*nnx+j] = lh.R_phi(X_new[j], X_new[nnx+j], X_new[2*nnx+j], X_new[3*nnx+j],X_new[4*nnx+j], x[j])
         
         # check for negative concentrations
         if (i%print_freq==0):
@@ -649,7 +663,7 @@ if (method=='Euler'):
         
         if (plotMovie and i%plot_freq==0):
             # produce plot of current state
-            plotFrame(X, x*lh.x_scale, t_arr[i], nnx, movieDir, U_temp, W_temp, lh.ADZ_top, lh.ADZ_bot)
+            plotFrame(X, x*lh.x_scale, t_arr[i], nnx, movieDir, U_temp, W_temp, lh.ADZ_top, lh.ADZ_bot, storeReactions, R_temp)
             
                 
         # move the new values into X
