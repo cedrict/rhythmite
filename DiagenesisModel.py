@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 
 ###  L'Heureux Diagenesis modelling ###
@@ -9,8 +8,11 @@ from numba import jit, float64, int64, boolean
 from numba.experimental import jitclass
 from numba_progress import ProgressBar
 import time
+import sys
+import os
 
 from saveOutput import export_to_ascii, export_to_vtu, export_to_vtu2
+from plotFunctions import plotFrame
 
 ## model for testing different solvers on the L'Heureux (2018) equations 
 
@@ -104,7 +106,7 @@ class LHeureux:
         self.D_Ca_0 = 131.9         # diffusion coefficient of Ca (cm^2/a) (used to scale to dimensionless units)
         self.D_CO = 272.6           # scaled diffusion coefficient of CO3 (cm^2/a)
         
-        self.b = 5.0e-4*0.2             # sediment compressibility (Pa^-1)
+        self.b = 5.0e-4*0.8**3/(0.8*3)   # sediment compressibility (Pa^-1)
         self.beta = 0.1             # Hydraulic conductivity constant (cm/a)
         
         self.k1 = 1.0               # reaction rate constants (a^-1)
@@ -423,25 +425,45 @@ method = 'DOP853'      # choice of method for time integration
 restart = False       # flag to determine a restart from file
 restrt_tstep = 10000     # tstep number of restart file to use
 
+plotMovie = True            # switch to turn on movie plotting
+movieDir = './movie_plts'   # name of directory in which plots are stored
+plotReactions = True        # switch to optionally plot the reaction rates
+
+if (plotMovie):
+    # create plt directory
+    os.makedirs(movieDir)
 
 steadyCheck = False    # switch for optional steady state checking
 tol = 1e-6             # tolerance for minimum variation between steps, needs tuning to tstep?
 count_threshold = 100  # tsteps for which solution variation must remain under to trigger steady state
 steady_count = 0       # variable to track how many continous steps a steady state was present in
 
+
 # Number of progress updates.
 no_prog_upd = 1_000
 
-print_freq = 10000         # frequency of print statements in Euler mode
-output_freq = 1000         # frequency of soln storage
+print_freq = 10_000         # frequency of print statements in Euler mode
+output_freq = 1_000         # frequency of soln storage
 checkpnt_freq = 14e7    # frequency of restart file write
-stats_freq = 1000         # frequecy to write to the _stats files
+stats_freq = 1_000         # frequecy to write to the _stats files
+plot_freq = 1000           # frequency to create plots for movie
 
 ########################### space grid setup ##################################
 nnx = 200                   # number of grid points
 L_x = 500/lh.x_scale        # Physical size of domain cm/x_scale
 h = L_x/(nnx-1)             # spatial step size
 x = np.linspace(0, L_x,nnx) # position array
+
+###############################################################################
+########################## command line overrides #############################
+############ needs to be changed to read into the correct variable ############ 
+###############################################################################
+if (len(sys.argv) > 1):
+    # there is a command line argument, read it into the chosen parameter variable
+    
+    nnx = int(sys.argv[1])
+    h = L_x/(nnx-1)             # spatial step size
+    x = np.linspace(0, L_x,nnx) # position array
 
 
 ########################### initial conditions ################################
@@ -476,7 +498,7 @@ else:
     
 ######################## time integration values ##############################
 
-tf = 250000/lh.t_scale # final sim time in a, scaled to dimensionless form 
+tf = 10e-6#300000/lh.t_scale # final sim time in a, scaled to dimensionless form 
 
 # set the timestep manually, ONLY used in Euler mode
 delta_t = 1e-6#0.001/lh.t_scale   # timestep in a, 1.13e-2/tsc = 10^-6 in scaled time
@@ -491,6 +513,8 @@ CA_file=open('stats_CA.ascii',"w")
 cca_file=open('stats_c_ca.ascii',"w")
 cco_file=open('stats_c_co.ascii',"w")
 phi_file=open('stats_phi.ascii',"w")
+    
+
 
 ###############################################################################
 ###############################################################################
@@ -507,6 +531,7 @@ if (method=='Euler'):
     
     U_temp = np.zeros(nnx)
     W_temp = np.zeros(nnx)
+    R_temp = np.zeros(5*nnx)
     
     start = time.time()
     for i in range(0,len(t_arr)):
@@ -514,10 +539,6 @@ if (method=='Euler'):
         if (i%print_freq==0):
             print('*****istep=',i,'***********************')
             print('t=%.2e / tf=%.2e' %(t_arr[i]*lh.t_scale,tf*lh.t_scale))
-        
-        if (i%output_freq==0):
-            # first append current soln to storage
-            soln.append(X)
         
         # calculate the RHS
         dX_dt = lh.X_RHS(t_arr, X, nnx, x, h)
@@ -535,6 +556,15 @@ if (method=='Euler'):
         U_temp = lh.U(X_new[4*nnx:5*nnx])
         W_temp = lh.W(X_new[4*nnx:5*nnx])
         
+        # also calc + store reaction rates if required
+        if (plotReactions and i%plot_freq==0):
+            for j in range(0,nnx):
+                R_temp[j] = lh.R_AR(X_new[j], X_new[nnx+j], X_new[2*nnx+j], X_new[3*nnx+j], x[j])
+                R_temp[nnx+j] = lh.R_CA(X_new[j], X_new[nnx+j], X_new[2*nnx+j], X_new[3*nnx+j], x[j])
+                R_temp[2*nnx+j] = lh.R_c_ca(X_new[j], X_new[nnx+j], X_new[2*nnx+j], X_new[3*nnx+j],X_new[4*nnx+j] , x[j])
+                R_temp[3*nnx+j] = lh.R_c_co(X_new[j], X_new[nnx+j], X_new[2*nnx+j], X_new[3*nnx+j],X_new[4*nnx+j], x[j])
+                R_temp[4*nnx+j] = lh.R_phi(X_new[j], X_new[nnx+j], X_new[2*nnx+j], X_new[3*nnx+j],X_new[4*nnx+j], x[j])
+        
         # check for negative concentrations
         if (i%print_freq==0):
             print('Negative AR, CA, ca, co, phi:%i, %i, %i, %i, %i'\
@@ -551,6 +581,10 @@ if (method=='Euler'):
                 X_new[j*nnx:(j+1)*nnx] = np.clip(X_new[j*nnx:(j+1)*nnx], 0.01, 1.0)
             else:
                 X_new[j*nnx:(j+1)*nnx] = np.clip(X_new[j*nnx:(j+1)*nnx], 0.0, 1.0e5)
+
+        if (i%output_freq==0):
+            # append current soln to storage
+            soln.append(X_new)
 
         if (i%stats_freq == 0):
             velstats_file.write("%d %4e %4e %4e %4e \n" % (i,np.min(U_temp),\
@@ -631,6 +665,7 @@ if (method=='Euler'):
                 t_eval = t_eval[:len(soln)]
                 
                 break
+        
         ############# write restart file ################## 
         if (i%checkpnt_freq==0):
             # write a restart file,
@@ -638,7 +673,11 @@ if (method=='Euler'):
             np.savetxt('restrt_%08d.ascii'%(i), \
                        np.concatenate((np.array([t_arr[i]]),X_new)))
         
+        if (plotMovie and i%plot_freq==0):
+            # produce plot of current state
+            plotFrame(X, x*lh.x_scale, t_arr[i], nnx, movieDir, U_temp, W_temp, lh.ADZ_top, lh.ADZ_bot, plotReactions, R_temp)
             
+                
         # move the new values into X
         X = np.copy(X_new)
 
