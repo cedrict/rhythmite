@@ -330,7 +330,7 @@ class LHeureux:
                               self.R_c_ca(AR[i], CA[i], c_ca[i], c_co[i], phi[i], x[i]) 
             else:
                 dc_ca_dt[i] = - w[i]*( (c_ca[i+1] - c_ca[i-1]) / (2*h) +\
-                                    -self.FV_switch*self.sigma_ca(w[i], h, phi[i])*h/2*(c_ca[i+1] - 2*c_ca[i] + c_ca[i-1])/(2*h) ) +\
+                                    -self.FV_switch*self.sigma_ca(w[i], h, phi[i])*h/2*(c_ca[i+1] - 2*c_ca[i] + c_ca[i-1])/(h**2) ) +\
                               ( 1 / phi[i] ) * ( phi_half[i]   * d_ca_half[i]  *(c_ca[i+1] - c_ca[i]) -\
                                                  phi_half[i-1] * d_ca_half[i-1]*(c_ca[i] - c_ca[i-1]) ) / h**2 +\
                               self.R_c_ca(AR[i], CA[i], c_ca[i], c_co[i], phi[i], x[i])
@@ -357,7 +357,7 @@ class LHeureux:
                               self.R_c_co(AR[i], CA[i], c_ca[i], c_co[i], phi[i], x[i]) 
             else:
                 dc_co_dt[i] = - w[i]*( (c_co[i+1] - c_co[i-1]) / (2*h) +\
-                              -self.FV_switch*self.sigma_co(w[i], h, phi[i])*h/2*(c_co[i+1] - 2*c_co[i] + c_co[i-1])/(2*h) ) +\
+                              -self.FV_switch*self.sigma_co(w[i], h, phi[i])*h/2*(c_co[i+1] - 2*c_co[i] + c_co[i-1])/(h**2) ) +\
                               (1 / phi[i] )*( phi_half[i]   * d_co_half[i]   * ( c_co[i+1] - c_co[i] ) -\
                                               phi_half[i-1] * d_co_half[i-1] * ( c_co[i] - c_co[i-1] ) ) / h**2 +\
                               self.R_c_co(AR[i], CA[i], c_ca[i], c_co[i], phi[i], x[i])
@@ -378,7 +378,7 @@ class LHeureux:
                              self.R_phi(AR[i], CA[i], c_ca[i], c_co[i], phi[i], x[i])
             else:
                 dphi_dt[i] = -( w[i+1] * phi[i+1] - w[i-1] * phi[i-1] ) / (2*h) +\
-                    self.FV_switch*self.sigma_phi(w[i], h)*h/2*(phi[i+1]*w[i+1] - 2*phi[i]*w[i] + phi[i-1]*w[i-1])/(2*h) +\
+                    self.FV_switch*self.sigma_phi(w[i], h)*h/2*(phi[i+1]*w[i+1] - 2*phi[i]*w[i] + phi[i-1]*w[i-1])/(h**2) +\
                             self.d_phi * ( phi[i+1] - 2*phi[i] + phi[i-1] ) / h**2 +\
                             self.R_phi(AR[i], CA[i], c_ca[i], c_co[i], phi[i], x[i])
         return dphi_dt
