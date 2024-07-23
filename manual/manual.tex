@@ -41,19 +41,13 @@ sorting=ynt
 
 \subsubsection*{Context}
 
-In the spring of 2024 I was approached by Emilia with regards to an article she and 
-her team wished to reproduce. Although recently published, and written by a renowned computational
-geoscientist, this article did not include link to a code. 
-The article in question is \cite{lheu18} 
-Can we reproduce the results of the paper using only the equations provided in the paper?
+In the spring of 2024 we were approached by Emilia with regards to an article she and 
+her team wished to reproduce. Although recently published, this article did not include an open source code. The article in question is \cite{lheu18}.\\\\ 
+Can we reproduce the results of the paper using only the equations provided?
 
 %----------------------------
 \subsubsection*{The PDEs of the physical problem}
-
-The whole geological context is a bit lost on me so I/we approached the project with a pragmatic 
-attitude: We must solve 5 coupled nonlinear advection-diffusion-reaction PDEs in a 1D domain.
-
-The model describes the evolution of the concentrations of five variables:
+The model describes the evolution of the concentrations of five variables as a set of 5 coupled nonlinear advection-diffusion-reaction PDEs in a 1D domain:
 \begin{itemize}
 \item Solids: two minerals which dissolve and (re)precipitate from/to the same
 solutes. They are expressed as proportions of the solid phase, and must
@@ -61,17 +55,11 @@ accordingly be non-negative, and their sum must be smaller or equal to one.
 $C_C$ is the proportion of calcite in the solid phase, and $C_A$ is the 
 proportion of aragonite in the solid phase.
 
-\item Solutes $\hat{c}_k$, where $k \in \{ Ca,CO3\}$.
-with $\hat{c}_{Ca}$: calcium concentration in pore water, and
-$\hat{c}_{CO3}$: carbonate concentration in pore water.
-
+\item Solutes $\hat{c}_k$, where $k \in \{ Ca,CO_3\}$.
+with $\hat{c}_{Ca}$: calcium ion concentration in pore water, and $\hat{c}_{CO_3}$: carbonate ion concentration in pore water.  As concentrations these cannot be negative but are otherwise unlimited.
 \item Porosity $\phi$
 \end{itemize}
-
-
-The equations involving our five unknowns $C_A$, $C_C$, $\hat{c}_k$ and $\phi$ are as follows (in
-order to highlight how nonlinear and coupled these equations are, I have colored the 
-five unknowns throughout):
+The equations involving our five unknowns $C_A$, $C_C$, $\hat{c}_k$ and $\phi$ are as follows (in order to highlight how nonlinear and coupled these equations are, I have colored the five unknowns throughout):
 \begin{eqnarray}
 \frac{\partial {\color{teal} C_A}}{\partial t} 
 &=& -U({\color{teal}\phi}) \frac{\partial {\color{teal}C_A}}{\partial x} 
@@ -97,18 +85,15 @@ five unknowns throughout):
 [{\color{teal}C_A}(\Omega_{DA}-\nu_1 \Omega_{PA})-\lambda 
 {\color{teal}C_C} (\Omega_{PC}-\nu_2 \Omega_{DC})] \nn
 \end{eqnarray}
-$k=1$ corresponds to $\hat{c}_{CA}$, and
-and $k=2$ corresponds to $\hat{c}_{C03}$.
-
+$k=1$ corresponds to $\hat{c}_{Ca}$, and and $k=2$ corresponds to $\hat{c}_{C0_3}$.
 We assume that the coordinate $x=0$ corresponds to the top of the domain
 which is of length $L$. 
-
 The PDEs above are actually dimensionless (the primes have been dropped), with 
 \[
 x'=x/X^\star, \quad t'=t/T^\star \quad \hat{c}_k'=\hat{c}_k/\sqrt{K_C},
 \quad U=u/S, \quad W=w/S.
 \]
-and with 
+The scaling factors are given by $X^* = D_{Ca,0} / V_s$ and $T^* = D_{Ca,0} / V_s^2 $, where $D_{Ca,0}$ is the initial calcium ion diffusion coefficient and $V_s$ is the sedimentation rate. The other constants in the equations are given by 
 \[
 Da=k_2 T^\star = \frac{k_2 D_{Ca}^0}{S^2},
 \quad
@@ -129,7 +114,7 @@ Da can be interpreted as a Damköhler number\footnote{\url{https://en.wikipedia.
 
 %......................................
 \subsubsection*{Hydraulic conductivity}
-
+The velocities in the above PDEs depend on the hydraulic conductivity, which in turn depends on the porosity through an empirically determined formula.  In this model it is given by
 \[
 K(\phi)
 =\beta \frac{\phi^3}{(1-\phi)^2} F(\phi)
@@ -140,9 +125,7 @@ which translated into the following code snippet:
 def K(self,phi):
     return self.beta*(phi**3/(1-phi)**2)*(1-np.exp(-10*(1-phi)/phi))
 \end{lstlisting}
-
-Since the porosity $\phi$ is between 0 and 1 and $K(\phi)$ contains terms which 
-could become infinite within this range, we could ask ourselves:
+The $F(\phi)$ expression is chosen such that in the limit as $\phi \rightarrow 1$ the hydraulic conductivity takes on the form specified in Equation 16 of \cite{lheu18}.  Based on this, it is interesting to consider the behaviour of $K$ at both limits:
 \[
 \lim_{\phi\rightarrow 0} K(\phi) = ?
 \qquad
@@ -165,7 +148,7 @@ which is Eq.~(16) of the paper.
 
 Also, since When $\phi \rightarrow 0$, then $(1-\phi)/\phi \rightarrow +\infty$ and then
 \[
-1-\exp\left( -\frac{10(1-\phi)}{\phi} \right) \sim 1 - \exp -\infty = 1 
+\lim_{\phi \rightarrow 0} \left( 1-\exp\left( -\frac{10(1-\phi)}{\phi} \right) \right) = 1 
 \]
 and finally
 \[
@@ -174,17 +157,13 @@ and finally
 
 %............................
 \subsubsection*{Velocities}
-
-W is the velocity of the pore water
-
-The velocities $U$ and $W$ are given by 
+$U$ is the velocity of the solid minerals and $W$ is the velocity of the pore water.  These are given by
 \begin{eqnarray}
 U(\phi)&=& 1-\frac{K(\phi^0)}{S}(1-\phi^0)(\frac{\rho_s^0}{\rho_w}-1) 
 +\frac{K(\phi)}{S}(1-\phi) (1-\phi^0)(\frac{\rho_s}{\rho_w}-1)    \\
 W(\phi)&=& 1-\frac{K(\phi^0)}{S}(1-\phi^0)(\frac{\rho_s^0}{\rho_w}-1) 
 -\frac{K(\phi)}{S} \frac{(1-\phi)^2}{\phi} (1-\phi^0)(\frac{\rho_s}{\rho_w}-1)   
 \end{eqnarray}
-
 These translate into
 \begin{lstlisting}
 def U(self, phi):
@@ -199,7 +178,6 @@ def W(self,phi):
           ( self.rho_s0 / self.rho_w - 1 )
     return w
 \end{lstlisting}
-
 The $U$ velocity contains the term $K(\phi)(1-\phi)$
 and the $W$ contains the term $K(\phi)(1-\phi)^2/\phi$.
 We find
@@ -250,38 +228,26 @@ def d_c_co(self, phi):
 %....................................
 \subsubsection*{Saturation factors}
 
-$\Omega_{PA}$ and $\Omega_{DA}$ are saturation factors for precipitation 
-and dissolution of aragonite. 
-$\Omega_{PC}$ and $\Omega_{DC}$ are saturation factors for precipitation 
-and dissolution of calcite.
-
-The under- and oversaturation factors 
-
+$\Omega_{PA}$ and $\Omega_{DA}$ are saturation factors for precipitation and dissolution of aragonite. $\Omega_{PC}$ and $\Omega_{DC}$ are saturation factors for precipitation and dissolution of calcite.  The oversaturation factor for Aragonite are given by
 \[
 \Omega_{PA}=\left( \frac{\hat{c}_{CA} \hat{c}_{CO3} K_C}{K_A} -1 \right)^{m'}
 \]
-where $m'$ is a reaction order (different from $m$ in general).
-It is understood that this reaction is only effective when the
-system is oversaturated, i.e. $\hat{c}_{CA} \hat{c}_{CO3} K_C/K_A -1 >0$.
-
+where $m'$ is a reaction order (different from $m$ in general).  It is understood that this reaction is only effective when the system is oversaturated, i.e. $\hat{c}_{CA} \hat{c}_{CO3} K_C/K_A -1 >0$.  The undersaturation factor is then given by
 \[
 \Omega_{DA}= \left(1-\frac{\hat{c}_{CA} \hat{c}_{CO3} K_C}{K_A}  \right)^m \theta(x)
 \]
-where $K_A$ is the solubility of aragonite and $m$ is a reaction
-order. It is understood that this reaction occurs only when
-the system is undersaturated,
-i.e. $1-\hat{c}_{CA} \hat{c}_{CO3}/K_A >0$.
-Finally,
-the factor $\theta(x)$ is a characteristic function that is zero when
-$x$ is outside the aragonite dissolution zone (ADZ) and one
-otherwise. The ADZ is characterized by the position of its top
-edge $x_d$ and its thickness $h_d$.
-
-Note that there is a confusion about $m$ and $m'$
-in eqs 27 and 45 of the paper, but in practice we set $m=m'$.
-
-Looking at the PDEs we find that $\Omega_{DA}$ and $\Omega_{PA}$
-always occur together so we define
+where $K_A$ is the solubility of aragonite and $m$ is a reaction order. It is understood that this reaction occurs only when the system is undersaturated, i.e. $1-\hat{c}_{CA} \hat{c}_{CO3}/K_A >0$.  The factor $\theta(x)$ is a characteristic function that is zero when $x$ is outside the aragonite dissolution zone (ADZ) and one otherwise. The ADZ is characterized by the position of its top edge $x_d$ and its thickness $h_d$.\\\\
+Similarly, the over and under saturation factors for calcite are 
+\[
+\Omega_{PC}=\left( \hat{c}_{CA} \hat{c}_{CO3} -1 \right)^{n'}
+\]
+where again this reaction is only effective when $\hat{c}_{CA} \hat{c}_{CO3} -1 >0$ and 
+\[
+\Omega_{DC}=\left( 1- \hat{c}_{CA} \hat{c}_{CO3}\right)^{n'}
+\]
+where the reaction is only active when $1- \hat{c}_{CA} \hat{c}_{CO3} >0$.\\\\
+Note that there is a confusion about $m$ and $m'$ in eqs 27 and 45 of the paper, but in practice we set $m=m'$ and $n=n'$.\\\\
+Looking at the PDEs we find that $\Omega_{DA}$ and $\Omega_{PA}$ always occur together so we define
 \[
 \Omega_A=\Omega_{DA}-\nu_1\Omega_{PA} 
 \]
@@ -289,8 +255,7 @@ Likewise we define
 \[
 \Omega_C=\Omega_{PC}-\nu_2\Omega_{DC}
 \]
-leading to write
-
+leading to their implementation in the code as:
 \begin{lstlisting}
 def Omega_A(self, c_ca, c_co, x):
     sp = c_ca*c_co*self.K_C/self.K_A - 1
@@ -309,29 +274,10 @@ def Omega_C(self, c_ca, c_co):
 
 %----------------------------------------------------------------------
 \subsection*{Numerical methods}
-
-we solve the coupled PDEs by the Method of Lines, i.e.
-we will discretise the right hand sides of the equations by means of the Finite 
-Difference Method but will keep the time derivative as they are and we will 
-use an Initial Value Problem integrator, e.g. Runge-Kutta methods.
-
-We have implemented two methods: a simple 1st order Euler method (with a 
-user-chosen constant timestep $dt$), and 
-the use of the {\python solve\_ivp} from {\python scipy} %(see \stone~156,157). 
-The code has been designed with modularity in mind so that many functions 
-have been created, each carrying out a single task.
-
-Because sharp transitions and discontinuities are very often source of error
-in numerical modelling we have replaced the Heaviside function $\theta(x)$
-by a smoothed version (the value of 500 controls the smoothness):
-
-\begin{lstlisting}
-def heaviside(x,xbot,xtop,xscale):
-    val=0.5*(1+np.tanh((x-xtop/xscale)*500)) *0.5*(1+np.tanh((xbot/xscale-x)*500))
-    return val 
-\end{lstlisting}
-
-As the equations require many constant parameters, we created a class to contain all the functions and parameter variables.  This way the functions need only take the solution variables and the `self' keyword as arguments, rather than passing lengthy lists of parameters to each function.  Parameter variables are set in the constructor function `\_\_init\_\_(self)' then accessed within the function using `self.var\_name'.  We also applied jit (just in time) compiling to the entire class, using the Numba package \footnote{\url{https://numba.readthedocs.io/en/stable/}}.  This produces compiled binaries for python functions at the first time they are encountered in the run and then reuses these binaries for all subsequent function calls, resulting in dramatically improved performance.  For this code, speed-up varies between a factor of roughly 3-10, depending on the mode the code runs in.  The addition of jit to the class is relatively simple, the main addition is that the type of all parameter values must be explicitly specified and passed to the jit decorator as a list of 2-element tuples specifying the variable name and its type:
+We solve the coupled PDEs by the Method of Lines, i.e. the right hand side of the equations are discretised by means of the Finite Difference Method but will keep the time derivative as they are and then use an Initial Value Problem integrator, e.g. Runge-Kutta methods.\\\\
+We have implemented two methods: a simple 1st order Euler method (with a user-chosen constant timestep $dt$), and the use of the {\python solve\_ivp} from {\python scipy}. %(see \stone~156,157). 
+The code has been designed with modularity in mind so that many functions have been created, each carrying out a single task.  In addition, as the equations require many constant parameters, we created a class to contain all the functions and parameter variables.  This way the functions need only take the solution variables and the `self' keyword as arguments, rather than passing lengthy lists of parameters to each function.  Parameter variables are set in the constructor function `\_\_init\_\_(self)' then accessed within the function using `self.var\_name'.\\\\
+We also applied jit (just in time) compiling to the entire class, using the Numba package\footnote{\url{https://numba.readthedocs.io/en/stable/}}.  This produces compiled binaries for python functions at the first time they are encountered in the run and then reuses these binaries for all subsequent function calls, resulting in dramatically improved performance.  For this code, speed-up varies between a factor of roughly 3-10, depending on the mode the code runs in.  The addition of jit to the class is relatively simple, the main addition is that the type of all parameter values must be explicitly specified and passed to the jit decorator as a list of 2-element tuples specifying the variable name and its type:
 \begin{lstlisting}
 from numba.experimental import jitclass
 
@@ -366,7 +312,7 @@ class LHeureux:
         ..
         ...
 \end{lstlisting}
-
+For clarity we write the five equations as
 \begin{eqnarray}
 \frac{\partial C_A}{\partial t} &=& -U \frac{\partial C_A}{\partial x}  + {\cal R}_{\text Aragonite}
 \nn\\
@@ -378,7 +324,6 @@ class LHeureux:
 \nn\\ 
 \frac{\partial \phi}{\partial t} &=& -\frac{\partial}{\partial x} (W \phi) +{\cal R}_\phi
 \end{eqnarray}
-
 The ${\cal R}$ rhs terms are implemented via five functions:
 \begin{lstlisting}
 #Aragonite
@@ -406,7 +351,18 @@ def R_phi(self, AR, CA, c_ca, c_co, phi, x):
     return self.Da*( 1 - phi )*\
                ( AR * self.Omega_A(c_ca, c_co, x) - self.lamb * CA * self.Omega_C(c_ca, c_co) )
 \end{lstlisting}
-
+Because sharp transitions and discontinuities are very often source of error in numerical modelling we added an option to replace the Heaviside function $\theta(x)$ (required within the {\python Omega\_A} function) by a smoothed version (the value of 500 controls the smoothness):
+\begin{lstlisting}
+def heaviside(x,xbot,xtop,xscale, smooth_switch):
+    if (smooth_switch==False):
+        if x < xbot/xscale and x > xtop/xscale:
+          return 1.0
+        else:
+          return 0.0
+    else:
+        val=0.5*(1+np.tanh((x-xtop/xscale)*500)) *0.5*(1+np.tanh((xbot/xscale-x)*500))
+        return val
+\end{lstlisting}
 The solution for all variables is stored in a single array, 5*nnx long, with the first nnx elements corresponding to the AR values, the next nnx giving CA and so on.  The full ordering of the variables in X is AR, CA, c\_ca, c\_co, phi.  This structure is designed for use with the ivp\_solve function, which expects a single array for the solution variable values.  ivp\_solve also expects a single function which calculates the RHS, so we also combine the RHS functions in a master function:
 \begin{lstlisting}
 def X_RHS(self, t, X, nnx, x, h):
@@ -436,9 +392,7 @@ for $x\ne 0$. This is Eq.~36 in the paper.
 %----------------------------------------------------------------------
 \subsection*{Boundary conditions}
 
-In the paper we find ``At the bottom boundary $x=L$ we will assume that the system has no diffusive flux''.
-We are not too sure what to make of this, but the author provides the following:
-
+In the paper we find ``At the bottom boundary $x=L$ we will assume that the system has no diffusive flux''.  We are not too sure what to make of this, but the author provides the following:\\\\
 At $x=0$ (top of the domain):
 \begin{eqnarray}
 C_A(0,t)&=&C_{A}^0 \\
@@ -453,27 +407,23 @@ At $x=L$ (bottom of the domain):
 \[
 \frac{\partial \phi (x,t)}{\partial x}|_L = 0
 \]
-
-we need boundary conditions there because of the second-order 
-derivative in these equations (diffusion term).
+As the paper is unclear, we employed two different strategies for the bottom BC.  The first was to follow the above strategy laid out in the paper and insist that the derivatives of the solutes and porosity (the variables with diffusion terms) are zero at the bottom boundary.  This was done by fixing the values in the final zone to be the same as those in the previous one, enforcing a flat derivative in that zone.  The alternative was to only force the diffusive derivative to zero, and to leave the advection term evaluated by a backward Euler derivative.  
 
 %----------------------------------------------------------------------
 \subsection*{Upwinding}
-
-The equations for $C_A$ and $C_C$ are pure advection equations. 
-We have observed that in the absence of any stabilisation the computed fields
-showcase over- and undershoots, which are unphysical and which also find their
-way into the rhs of the other PDEs. 
-
-We have then decided to use the 
-Fiadeiro \& Veronis method \cite{five77,wrig92}, which works as follows for the (steady state)
-advection-diffusion equation (see also p315 of \cite{boudreau}):
+The equations for $C_A$ and $C_C$ are pure advection equations. We observed that in the absence of any stabilisation the computed fields show over- and undershoots, which are unphysical and which also find their way into the RHS of the other PDEs very rapidly due to the strong coupling. 
+We therefore implemented an upwind scheme for these two equations, which switches between forward and backward differences dependant on the sign of the velocity:
+\[
+-U \frac{\partial C}{\partial x} \approx -U \left( \frac{C_{i+1} - C_{i-1}}{h} - S(U)\frac{C_{i+1} - 2C_{i} +C_{i-1}}{2h} \right)
+\]
+where $S(U)$ is the sign of $U$.  
+\subsubsection*{Fiadeiro-Veronis scheme}
+In \cite{lheu18} the Fiadeiro \& Veronis method \cite{five77,wrig92} is applied in the solute and porosity equations, for stability.  For the (steady state) advection-diffusion equation (see also p315 of \cite{boudreau}):
 \[
 \kappa \frac{T_{i+1}-2T_i + T_{i-1}}{h^2}
 - u \frac{(1-\sigma) T_{i+1}+2\sigma T_i -(1+\sigma)T_{i-1}}{2 h} = 0
 \]
-which is a blend of backward (upstream) and central differences. The amount of
-blending is dictated by the value of the parameter $\sigma$, defined as
+which is a blend of backward (upstream) and central differences. The amount of blending is dictated by the value of the parameter $\sigma$, defined as
 \[
 \sigma 
 = \text{coth} \frac{u h}{2 \kappa} - \frac{2 \kappa}{u h}
@@ -489,18 +439,12 @@ The equation above can also be rewritten:
 + \frac{u \sigma h}{2} \frac{T_{i+1}-2 T_i +T_{i-1}}{h^2} = 0
 \]
 which makes the action of this stabilisation term more obvious: it is a diffusion term whose 
-diffusion coefficient goes away when $h\rightarrow 0$. 
-
-Thus, if $\sigma = 0$ (diffusion dominated), then pure central differencing is obtained, and if
-$\sigma = 1$ (advection dominated), then pure backward differencing results. Interestingly
-enough, this blended or weighted scheme is second-order accurate even as it switches
-to backward differencing \cite{five77}. 
-When $\kappa \rightarrow 0$ (no physical diffusion at all - as is the case for $C_A$ and $C_C$)
-then $\sigma$ tends to $\pm 1$, and more precisely: $\sigma = sign(u)$, which allows for a simple 
-and elegant implementation. 
-
+diffusion coefficient goes away when $h\rightarrow 0$.\\\\
+Thus, if $\sigma = 0$ (diffusion dominated), then pure central differencing is obtained, and if $\sigma = 1$ (advection dominated), then pure backward differencing results. Interestingly enough, this blended or weighted scheme is second-order accurate even as it switches to backward differencing \cite{five77}.  When $\kappa \rightarrow 0$ (no physical diffusion at all - as is the case for $C_A$ and $C_C$) then $\sigma$ tends to $\pm 1$, and more precisely: $\sigma = sign(u)$, which becomes the simple upwinding scheme shown above.\\\\
+We have also included an option for using this method in our code, although we note that it was not necessary for stability in our experience.
 
 %----------------------------------
+
 \subsubsection*{1st PDE}
 
 \[
@@ -510,9 +454,9 @@ and elegant implementation.
 \lambda {\color{teal}C_AC_C} (\Omega_{PC}-\nu_2\Omega_{DC})]
 \]
 Turning to the Aragonite PDE, we must now produce a FD approximation of the advection term.
-For all the nodes inside the domain, use use a centered approximation:
+For all the nodes inside the domain, we use an upwind scheme, which may be optionally turned off to return to a centered scheme:
 \[
--U \frac{\partial C_A}{\partial x} \rightarrow -U_i \frac{C_A|_{i+1} -C_A|_{i-1}}{2h}
+-U \frac{\partial C_A}{\partial x} \rightarrow -U_i \frac{C_A|_{i+1} -C_A|_{i-1}}{2h} + U_i S(U_i) \frac{C_A|_{i+1} - 2C_A|_{i} +C_A|_{i-1}}{2h}
 \]
 For the node at the top (i.e. $i=0$), we are prescribing the value of $C_A$, i.e.
 the derivative is then zero so then 
@@ -527,18 +471,21 @@ approximation:
  
 \begin{lstlisting}
 def RHS_AR(self, AR, CA, c_ca, c_co, phi, x, h):
-    dAR_dt = np.zeros(len(x))
-    u = self.U(phi)
-    for i in range(0,len(x)):
-        # x = 0 BC, Dirichlet
-        if (i==0):
-            dAR_dt[i]= 0
-        # x = Lx, no prescribed BC
-        elif (i==len(x)-1):
-            dAR_dt[i]= -u[i]*(AR[i]-AR[i-1])/h + self.R_AR(AR[i],CA[i],c_ca[i],c_co[i],x[i])
-        else:
-            dAR_dt[i]= -u[i]*(AR[i+1]-AR[i-1])/(2*h) + self.R_AR(AR[i],CA[i],c_ca[i],c_co[i], x[i])    
-    return dAR_dt
+        dAR_dt = np.zeros(len(x))
+        u = self.U(phi)
+        
+        for i in range(0,len(x)):
+            # x = 0 BC, Dirichlet
+            if (i==0):
+                dAR_dt[i]= 0
+            # x = Lx, no prescribed BC
+            elif (i==len(x)-1):
+                dAR_dt[i]= -u[i]*(AR[i]-AR[i-1])/h + self.R_AR(AR[i],CA[i],c_ca[i],c_co[i],x[i])
+            else:
+                dAR_dt[i]= -u[i]*( (AR[i+1]-AR[i-1])/(2*h) 
+                        - self.upwind_switch*np.sign(u[i])*h/2*(AR[i+1] - 2*AR[i] + AR[i-1])/h**2 )\
+                        + self.R_AR(AR[i],CA[i],c_ca[i],c_co[i], x[i])    
+        return dAR_dt
 \end{lstlisting}
 
 %----------------------------------
@@ -551,22 +498,24 @@ def RHS_AR(self, AR, CA, c_ca, c_co, phi, x, h):
 \]
 
 The structure of the 2nd PDE is identical to the first 
-one so we adopt the same approch.
+one so we adopt the same approach.
 
 \begin{lstlisting}
 def RHS_CA(self, AR, CA, c_ca, c_co, phi, x, h):
-    dCA_dt = np.zeros(len(x))
-    u = self.U(phi)
-    for i in range(0,len(x)):
-        # x = 0 BC, Dirichlet
-        if (i==0):
-            dCA_dt[i]= 0
-        # x = Lx, no prescribed BC
-        elif (i==len(x)-1):
-            dCA_dt[i]= -u[i]*( CA[i]-CA[i-1] ) / h + self.R_CA(AR[i], CA[i], c_ca[i], c_co[i], x[i])
-        else:
-            dCA_dt[i]= -u[i]*( CA[i+1]-CA[i-1])/(2*h)+self.R_CA(AR[i],CA[i],c_ca[i],c_co[i],x[i])
-    return dCA_dt
+        dCA_dt = np.zeros(len(x))
+        u = self.U(phi)
+        for i in range(0,len(x)):
+            # x = 0 BC, Dirichlet
+            if (i==0):
+                dCA_dt[i]= 0
+            # x = Lx, no prescribed BC
+            elif (i==len(x)-1):
+                dCA_dt[i]= -u[i]*( CA[i]-CA[i-1] )/h + self.R_CA(AR[i],CA[i],c_ca[i],c_co[i],x[i])
+            else:
+                dCA_dt[i]= -u[i]*( ( CA[i+1]-CA[i-1])/(2*h) 
+                    - self.upwind_switch*np.sign(u[i])*h/2*(CA[i+1] - 2*CA[i] + CA[i-1])/h**2 )\
+                    + self.R_CA(AR[i],CA[i],c_ca[i],c_co[i],x[i])
+        return dCA_dt
 \end{lstlisting}
 
 %----------------------------------
@@ -581,9 +530,7 @@ def RHS_CA(self, AR, CA, c_ca, c_co, phi, x, h):
 [{\color{teal}C_A}(\Omega_{DA}-\nu_1\Omega_{PA})-\lambda 
 {\color{teal}C_C} (\Omega_{PC}-\nu_2 \Omega_{DC})  ]
 \]
-The advection term is treated in the same way as above, but we here have to discretise 
-a diffusion term with a non constant diffusion coefficient.
-The standard procedure in such cases is as follows:
+The advection term is treated as above however instead of a simple upwind scheme we here use the Fiadeiro-Veronis scheme.  We also have to discretise a diffusion term with a non constant diffusion coefficient.  The standard procedure in such cases is as follows:
 \[
 \frac{\partial }{\partial x} \left( k \frac{\partial f}{\partial x} \right)
 \simeq
@@ -594,9 +541,7 @@ k_{i-1/2} \frac{f_{i}-f_{i-1}}{h}
 }{h}
 \] 
 where $k_{i\pm 1/2}$ is evaluated between the points to maintain the 
-second order accuracy.
-
-In our case we then have (I have removed the $k$ subscript):
+second order accuracy.  In our case we then have (with the $k$ subscript removed):
 \[
 \frac{\partial}{\partial x} 
 \left( {\color{teal}\phi} d 
@@ -639,26 +584,39 @@ and we see that the b.c. kills the first term, so we are left with
 =
 -\phi_{i-3/2} d_{i-3/2} \frac{c_{i-1}-c_{i-2}}{h^2}
 \]
-and we see that the b.c. kills the first term, so we are left with
-
-
-
-
 
 \begin{lstlisting}
-...
+def RHS_c_ca(self, AR, CA, c_ca, c_co, phi, x, h):
+        dc_ca_dt = np.zeros(len(x))
+        w = self.W(phi)
+        phi_half = np.zeros(len(x)-1)
+        d_ca_half = np.zeros(len(x)-1)
+        
+        for i in range(0,len(x)-1):
+            phi_half[i] = ( phi[i+1] + phi[i] ) / 2
+            d_ca_half[i] = ( self.d_c_ca(phi[i+1]) + self.d_c_ca(phi[i]) ) / 2
+        
+        for i in range(0,len(x)):
+            # x = 0 BC, Dirichlet
+            if (i==0):
+                dc_ca_dt[i] = 0
+            # x = Lx BC, df/dx = 0
+            elif (i==len(x)-1):
+                dc_ca_dt[i] =  ( 1 / phi[i] )*( phi[i-2] * self.d_c_ca(phi[i-2]) * c_ca[i-2] -\
+                                                phi[i-1] * self.d_c_ca(phi[i-1]) * c_ca[i-1])/h**2\  
+                                + self.R_c_ca(AR[i], CA[i], c_ca[i], c_co[i], phi[i], x[i]) 
+            else:
+                dc_ca_dt[i] = - w[i]*( (c_ca[i+1] - c_ca[i-1]) / (2*h) +\
+                                    -self.FV_switch*self.sigma_ca(w[i], h, phi[i])\
+                                    *h/2*(c_ca[i+1] - 2*c_ca[i] + c_ca[i-1])/(h**2) )\
+                              + ( 1 / phi[i] ) * (phi_half[i]*d_ca_half[i]*(c_ca[i+1] - c_ca[i]) -\
+                                        phi_half[i-1]*d_ca_half[i-1]*(c_ca[i] - c_ca[i-1]))/h**2\
+                               + self.R_c_ca(AR[i], CA[i], c_ca[i], c_co[i], phi[i], x[i])
+        return dc_ca_dt
 \end{lstlisting}
 
 %----------------------------------
 \subsubsection*{5th PDE}
-
-
-
-
-
-
-
-
 \[
 \frac{\partial {\color{teal}\phi}}{\partial t} 
 = -\frac{\partial}{\partial x} (W {\color{teal}\phi})
@@ -666,19 +624,17 @@ and we see that the b.c. kills the first term, so we are left with
 [{\color{teal}C_A}(\Omega_{DA}-\nu_1 \Omega_{PA})-\lambda 
 {\color{teal}C_C} (\Omega_{PC}-\nu_2 \Omega_{DC})] \nn
 \]
-
+The advection term in this case is of a slightly different form, so we apply the Fiadeiro-Veronis scheme as follows:
 \[
 \frac{\partial}{\partial x} (W ({\color{teal}\phi}) {\color{teal}\phi})
 \simeq
-\frac{W(\phi_{i+1})\phi_{i+1}-  W(\phi_{i-1})\phi_{i-1}}{2h}
+\frac{W(\phi_{i+1})\phi_{i+1} - W(\phi_{i-1})\phi_{i-1}}{2h} - \sigma_i \frac{\phi_{i-1}W(\phi_{i-1}) - 2 \phi_iW(\phi_i) + \phi_{i-1} W(\phi_{i-1})}{2h}
 \]
-
+The diffusion derivative in this case is just a standard centered difference
 \[
 \frac{\partial^2 {\color{teal}\phi}}{\partial x^2}
 \simeq \frac{\phi_{i+1}-\phi_{i-1}}{2h}  
 \]
-
-
 The value of $\phi$ is prescribed at $x=0$ but only its derivative
 is prescribed at the bottom ($x=L$):
 \[
@@ -688,7 +644,6 @@ i.e.
 \[
 \frac{\phi_i-\phi_{i-1}}{h}=0  \qquad \text{for} \quad i=nnx-1
 \] 
-
 The fully backward diffusion term on the right side is 
 \[
 \frac{\phi_{i-2}-2\phi_{i-1}+\phi_i}{h^2}
@@ -697,6 +652,27 @@ which means that given the boundary condition it becomes
 \[
 \frac{\phi_{i-2}-\phi_{i-1}}{h^2}
 \]
+In the code this is implemented as 
+\begin{lstlisting}
+def RHS_phi(self, AR, CA, c_ca, c_co, phi, x, h):
+        dphi_dt = np.zeros(len(x))
+        w = self.W(phi)
+        for i in range(0,len(x)):
+            # x = 0 BC, Dirichlet
+            if (i==0):
+                dphi_dt[i] = 0
+            # x = Lx BC, df/dx = 0
+            elif (i==len(x)-1):
+                dphi_dt[i] = - ( w[i] * phi[i] - w[i-1] * phi[i-1] ) / h +\
+                             self.d_phi*( phi[i-2] - phi[i-1] ) / h**2 +\
+                             self.R_phi(AR[i], CA[i], c_ca[i], c_co[i], phi[i], x[i])
+            else:
+                dphi_dt[i] = -( w[i+1] * phi[i+1] - w[i-1] * phi[i-1] ) / (2*h) +\
+                    self.FV_switch*self.sigma_phi(w[i], h)*h/2*(phi[i+1]*w[i+1] - 2*phi[i]*w[i]                                                                 + phi[i-1]*w[i-1])/(h**2) +\
+                            self.d_phi * ( phi[i+1] - 2*phi[i] + phi[i-1] ) / h**2 +\
+                            self.R_phi(AR[i], CA[i], c_ca[i], c_co[i], phi[i], x[i])
+        return dphi_dt
+\end{lstlisting}
 
 \printbibliography
 

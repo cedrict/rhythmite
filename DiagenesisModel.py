@@ -21,10 +21,8 @@ def heaviside(x,xbot,xtop,xscale, smooth_switch):
     
     if (smooth_switch==False):
         if x < xbot/xscale and x > xtop/xscale:
-          #print (x,1)
           return 1.0
         else:
-          #print (x,0)
           return 0.0
     else:
         val=0.5*(1+np.tanh((x-xtop/xscale)*500)) *0.5*(1+np.tanh((xbot/xscale-x)*500))
