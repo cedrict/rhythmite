@@ -82,7 +82,7 @@ spec = [
 # This class contains the functions and parameters that are used to calculate
 # the RHS of eqns 40-43 of L'Heureux (2018)
 @jitclass(spec)
-class LHeureux:
+class DiageneticModel:
     
     # define all params as instance vars
     # this way we can easily modify them at the instance level
@@ -152,7 +152,7 @@ class LHeureux:
         
         self.upwind_switch = 1          # optionally use upwind derivatives in AR, CA eqns
         self.smooth_switch = False      # option to use smoothed Heaviside fn for ADZ
-        self.FV_switch = 0              # optionally use the Fiadeiro-Veronis scheme ofr c_ca, co, phi
+        self.FV_switch = 0              # optionally use the Fiadeiro-Veronis scheme for c_ca, co, phi
         self.last_t = 0.                # Helper variable for progress bar.
     
     ################################################
@@ -411,21 +411,21 @@ class LHeureux:
 ###############################################################################
 
 # create instance of the model class
-lh = LHeureux()
+lh = DiageneticModel()
 
 # labels corresponding the the soln variables, for print statements
 labels=['AR  ', 'CA  ', 'c_ca', 'c_co', 'phi ']
 
 # run settings 
 verbose = True        # print out extra info at each step, for debugging
-method = 'DOP853'      # choice of method for time integration
-                      # options currently: 'Euler','RK23','RK45','DOP853'
+method = 'Euler'      # choice of method for time integration
+                      # options currently: 'Euler','RK23','RK45','DOP853' 'LSODA'
 restart = False       # flag to determine a restart from file
 restrt_tstep = 10000     # tstep number of restart file to use
 
-plotMovie = True            # switch to turn on movie plotting
-movieDir = './movie_plts'   # name of directory in which plots are stored
-plotReactions = True        # switch to optionally plot the reaction rates
+plotMovie = False            # switch to turn on movie plotting
+movieDir = './movie_plts'    # name of directory in which plots are stored
+plotReactions = True         # switch to optionally plot the reaction rates
 
 if (plotMovie):
     # create plt directory
@@ -438,13 +438,14 @@ steady_count = 0       # variable to track how many continous steps a steady sta
 
 
 # Number of progress updates.
-no_prog_upd = 1_000
+no_prog_upd = 1000
 
-print_freq = 10_000         # frequency of print statements in Euler mode
-output_freq = 1_000         # frequency of soln storage
-checkpnt_freq = 14e7    # frequency of restart file write
-stats_freq = 1_000         # frequecy to write to the _stats files
-plot_freq = 1000           # frequency to create plots for movie
+print_freq = 1000         # frequency of print statements in Euler mode
+output_freq = 100         # frequency of soln storage
+checkpnt_freq = 1e7       # frequency of restart file write
+stats_freq = 1000         # frequecy to write to the _stats files
+plot_freq = 1000          # frequency to create plots for movie
+
 
 ########################### space grid setup ##################################
 nnx = 200                   # number of grid points
@@ -546,13 +547,16 @@ if (method=='Euler'):
         
         #######################################################################
         ##################### phi, c_ca, c_co BC at nnx #######################
-        # want a flat derivative here so we set phi(nnx-1) - phi(nnx-2)
-        X_new[5*nnx-1] = X_new[5*nnx-2]
-        X_new[4*nnx-1] = X_new[4*nnx-2]
-        X_new[3*nnx-1] = X_new[3*nnx-2]
+        # want a flat derivative here so we set phi(nnx-1) - phi(nnx-2), etc. #
         
-        U_temp = lh.U(X_new[4*nnx:5*nnx])
-        W_temp = lh.W(X_new[4*nnx:5*nnx])
+        #X_new[5*nnx-1] = X_new[5*nnx-2]
+        #X_new[4*nnx-1] = X_new[4*nnx-2]
+        #X_new[3*nnx-1] = X_new[3*nnx-2]
+        
+        if (i%stats_freq == 0 or i%plot_freq==0 or i%output_freq==0 or i%print_freq==0):
+            # only calculate velocities when needed
+            U_temp = lh.U(X_new[4*nnx:5*nnx])
+            W_temp = lh.W(X_new[4*nnx:5*nnx])
         
         # also calc + store reaction rates if required
         if (plotReactions and i%plot_freq==0):
@@ -689,7 +693,8 @@ if (method=='Euler'):
     vel_U = np.transpose(vel_U)
     vel_W = np.transpose(vel_W)
     
-elif(method=='RK23' or method=='RK45' or method=='DOP853'): # use the scipy solve_ivp
+elif(method=='RK23' or method=='RK45' or method=='DOP853' or method=='LSODA'): 
+    # use the scipy solve_ivp
 
     print('****************************')
     print('using ivp with method=%s'%(method))
@@ -722,7 +727,7 @@ elif(method=='RK23' or method=='RK45' or method=='DOP853'): # use the scipy solv
     vel_W=np.array(lh.W(soln[4*nnx:,:]))
 else:
     print('selected method is not a supported choice')
-    print('Options are Euler, RK23, RK45, DOP853')
+    print('Options are Euler, RK23, RK45, DOP853, LSODA')
 if (method=='Euler'):
     print('***********************istep=',i)
 print('time elapsed=',  time.time()-start)
@@ -733,13 +738,13 @@ print('time elapsed=',  time.time()-start)
 
 export_to_vtu2(len(t_eval), x, soln, vel_U, vel_W, lh.ADZ_bot, lh.ADZ_top, lh.x_scale, delta_t)
 
-# Take time series at fixed depth
+# Take time series at fixed depth, to match Fortran output
 depths = [int(nnx/4), int(nnx/2), int(3*nnx/4),  nnx-1]
 for i in depths:
     export_to_ascii('x', i, t_eval, soln[i,:], soln[nnx+i,:], soln[2*nnx+i,:],\
                     soln[3*nnx+i,:], soln[4*nnx+i,:], lh.U(soln[4*nnx+i,:]), lh.W(soln[4*nnx+i,:]))
 
-# then take depth profiles at fixed time
+# then take depth profiles at fixed time, to match Fortran output
 times = [int(len(t_eval)/4), int(len(t_eval)/2),\
          int(3*len(t_eval)/4),  len(t_eval)-1]
 for i in times:
