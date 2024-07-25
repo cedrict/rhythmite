@@ -389,11 +389,26 @@ class DiageneticModel:
     # for use in the scipy ivp_solve function
     ########################################## 
 
-    def X_RHS(self, t, X, nnx, x, h, progress_proxy, progress_dt, t0):
+    def X_RHS(self, t, X, nnx, x, h):
+        
+        
+        dAR_dt   = self.RHS_AR(  X[0:nnx], X[nnx:2*nnx], X[2*nnx:3*nnx], X[3*nnx:4*nnx], X[4*nnx:5*nnx], x, h)
+        dCA_dt   = self.RHS_CA(  X[0:nnx], X[nnx:2*nnx], X[2*nnx:3*nnx], X[3*nnx:4*nnx], X[4*nnx:5*nnx], x, h)
+        dc_ca_dt = self.RHS_c_ca(X[0:nnx], X[nnx:2*nnx], X[2*nnx:3*nnx], X[3*nnx:4*nnx], X[4*nnx:5*nnx], x, h)
+        dc_co_dt = self.RHS_c_co(X[0:nnx], X[nnx:2*nnx], X[2*nnx:3*nnx], X[3*nnx:4*nnx], X[4*nnx:5*nnx], x, h)
+        dphi_dt  = self.RHS_phi( X[0:nnx], X[nnx:2*nnx], X[2*nnx:3*nnx], X[3*nnx:4*nnx], X[4*nnx:5*nnx], x, h)
+        
+        return np.concatenate((dAR_dt, dCA_dt, dc_ca_dt, dc_co_dt, dphi_dt)) 
+    
+    # version for use in ivp mode, since this needs extra stuff for progress bar
+    def X_RHS_ivp(self, t, X, nnx, x, h, progress_proxy, progress_dt, t0):
+        
         # Code from 
         # https://stackoverflow.com/questions/59047892/
         # how-to-monitor-the-process-of-scipy-odeint
         # If self.last_t has not been updated before, it should be set to t0.
+       
+        # only use if in ivp_solve, not 
         if self.last_t == 0.:
             self.last_t = t0
         n = int((t - self.last_t) / progress_dt)
@@ -531,6 +546,7 @@ if (method=='Euler'):
     U_temp = np.zeros(nnx)
     W_temp = np.zeros(nnx)
     R_temp = np.zeros(5*nnx)
+    
     
     start = time.time()
     for i in range(0,len(t_arr)):
@@ -702,14 +718,14 @@ elif(method=='RK23' or method=='RK45' or method=='DOP853' or method=='LSODA'):
     if (output_freq==1):
         with ProgressBar(total=no_prog_upd) as progress:
             # allow ivp_solve to output its own full soln
-            soln_full = solve_ivp(lh.X_RHS, (t0,tf), X, 
+            soln_full = solve_ivp(lh.X_RHS_ivp, (t0,tf), X, 
                                   args=(nnx, x, h, progress, 
                                         (tf-t0)/no_prog_upd, t0), 
                                   method=method, first_step=1e-6)
     else:
         with ProgressBar(total=no_prog_upd) as progress: 
             # use subsampled t_arr points for evaluation
-            soln_full = solve_ivp(lh.X_RHS, (t0,tf), X, 
+            soln_full = solve_ivp(lh.X_RHS_ivp, (t0,tf), X, 
                                   args=(nnx, x, h, progress, 
                                         (tf-t0)/no_prog_upd, t0),
                                   method=method, t_eval=t_eval)
